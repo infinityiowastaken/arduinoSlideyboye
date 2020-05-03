@@ -1,0 +1,7 @@
+{
+    "programmer": "AVRISP mkII",
+    "board": "arduino:avr:micro",
+    "sketch": "slideyboye.ino",
+    "port": "COM4",
+    "output": "build"
+}
