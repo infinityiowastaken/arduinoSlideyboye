@@ -3,7 +3,7 @@
 
 #include "HID-Project.h"  // input lib
 
-// #include "FastLED.h"      // led lib
+#include <FastLED.h>      // led lib
 
 #define addr  0x3C
 
@@ -23,9 +23,9 @@
 #define invert   0
 
 #define numLeds 30
-#define bright 127 // power limits across usb
+#define bright 127 // power limits for led strip mean max brightness is not possible
 
-uint32_t timings[6];
+uint32_t timings[7];
 // timings[] array stores timings information
 // 0  set at start of cycle
 // 1  set after slider is read
@@ -40,9 +40,11 @@ uint32_t timings[6];
 // 0  most recent value
 // 15 least recent value
 
+CRGB leds[1];
+
 int delta, rotation, fillBut, fillBut2, mode, unsmoothed;
 
-int  count, stdev;
+int  count, stdev; // debug modes for calculating stdev of slider
 long sum, sumSq;
 
 int slide[10];
@@ -55,7 +57,7 @@ int slide[10];
 // 8     fancy position (percentage)
 // 9     unsmoothed, uncalibrated position
 
-bool updateRot, lastDir;
+bool updateRot, lastDir, doStdev, hideLed, hideDisp;
 
 SSD1306AsciiAvrI2c oled;
 
@@ -75,6 +77,9 @@ void setup() {
   pinMode(button0, INPUT_PULLUP);     // init button pins
   pinMode(button1, INPUT_PULLUP);
   pinMode(button2, INPUT_PULLUP);
+
+  FastLED.addLeds<WS2812B, ledPin, RGB>(leds, 1);
+  leds[0] = CHSV(0, 0, 0);
 
   slide[4] = analogRead(slider);      // init slider readings
   slide[8] = 2 * round((float) slide[4] * 0.09765625 * 0.5);
@@ -131,7 +136,12 @@ void loop() {
       Keyboard.press(KEY_H);
       delay(17);
       Keyboard.releaseAll();
-    } //
+    } 
+    else if (mode == -1) {
+      hideDisp = !hideDisp;
+      hideLed  = !hideLed;
+      oled.clear();
+    }
 
     log(48);
     fillBut2 = 5;
@@ -184,19 +194,12 @@ void loop() {
   
   timings[1] = millis();
   
-
-  if (mode == 0) {
-    RXLED1;
-    TXLED1;
-  } else if (mode == 1) {
-    RXLED1;
-    TXLED0;
-  } else if (mode == 2) {
-    RXLED0;
-    TXLED1;
-  } else if (mode == -1) {
+  if (mode == -1 && !hideLed) {
     RXLED0;
     TXLED0;
+  } else {
+    RXLED1;
+    TXLED1;
   }
 
   if (updateRot && mode != -1) {
@@ -228,10 +231,14 @@ void loop() {
     if (digitalRead(button2)) fillBut2--;
   }
 
-  if (mode == -1) { // debug
-    timings[5] = millis();
-    addToStdev(slide[0]);
+  if (mode == -1) { // debug mode
+    timings[6] = millis();
 
+    if (!hideLed) leds[0] = CHSV(timings[6] / 10 , rotation, (slide[0] * 3 / 16) + 64);
+    else          leds[0] = CHSV(0, 0, 0);
+    FastLED.show();
+
+    if(!hideDisp) {
     oled.setFont(Verdana12);
     oled.setCursor(0,0);
     oled.print("Debug");
@@ -239,36 +246,40 @@ void loop() {
     oled.setFont(Adafruit5x7);
 
     oled.setCursor(61,0);
-    if (slide[9] < 10)   oled.print(" ");
-    if (slide[9] < 100)  oled.print(" ");
-    if (slide[9] < 1000) oled.print(" ");
+    if      (slide[9] < 10)   oled.print(" ");
+    else if (slide[9] < 100)  oled.print(" ");
+    else if (slide[9] < 1000) oled.print(" ");
     oled.print(slide[9]);
     oled.print(" / ");
-    if (slide[0] < 10)   oled.print(" ");
-    if (slide[0] < 100)  oled.print(" ");
-    if (slide[0] < 1000) oled.print(" ");
+    if      (slide[0] < 10)   oled.print(" ");
+    else if (slide[0] < 100)  oled.print(" ");
+    else if (slide[0] < 1000) oled.print(" ");
     oled.print(slide[0]);
 
-    oled.setCursor(103,1);
-    if (rotation >= 0)       oled.print(" ");
-    if (abs(rotation) < 10)  oled.print(" ");
-    if (abs(rotation) < 100) oled.print(" ");
+    oled.setCursor(109,1);
+    if      (abs(rotation) < 10)  oled.print(" ");
+    else if (abs(rotation) < 100) oled.print(" ");
+    if      (rotation > 0)        oled.print("+");
+    else if (rotation == 0)       oled.print(" ");
     oled.print(rotation);
 
-    oled.setCursor(79,2);
-    oled.print("sd: ");
-    oled.print(calcStdev()/100);
-    oled.print(".");
-    if (calcStdev()%100 < 10) oled.print("0");
-    oled.print(calcStdev()%100);
+    if (doStdev) {
+      addToStdev(slide[0]);
+      oled.setCursor(79,2);
+      oled.print("sd: ");
+      oled.print(calcStdev() / 100);
+      oled.print(".");
+      if (calcStdev() % 100 < 10) oled.print("0");
+      oled.print(calcStdev() % 100);
+    }
     
-    oled.setCursor(67,3);
+    oled.setCursor(67, 3);
     if ((1 + millis() - timings[0]) < 10)   oled.print(" ");
     oled.print((1 + millis() - timings[0])); // time for entire cycle
     oled.print("ms");
 
     oled.print(" (");
-    oled.print(1 + timings[5] - timings[0]);
+    oled.print(1 + timings[6] - timings[0]);
     oled.print("ms)");
 
     // oled.setFont(Adafruit5x7);
@@ -276,6 +287,7 @@ void loop() {
     // oled.print("outputs: ");
     // oled.setFont(arrows);
     // oled.println(last);
+    }
   }
 
 
@@ -340,6 +352,10 @@ void dispMode(int mode) {
     oled.clear();
     return;
   }
+
+  if (!hideLed) leds[0] = CHSV(90*mode+10, 255, 64);
+  else          leds[0] = CHSV(0, 0, 0);
+  FastLED.show();
 
   oled.setFont(Adafruit5x7);
 
@@ -415,23 +431,30 @@ int calib(int input) {
 }
 
 void addToStdev(int value) {
-  if (count > 500) return;
+  if (count >= 500) {
+    doStdev = false;
+    return;
+  };
   count ++;
   sum += value;
-  sumSq += pow(value, 2);
+  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
+                          // count > 2000, in which case an online algo may be needed, but
+                          // 500 samples should be more than enough for anything i can thi
+                          // -nk of where stdev is needed
 }
 void resetStdev () {
   count = 0;
   sum = 0;
   sumSq = 0;
+  doStdev = true;
 }
 int calcStdev() {
   if (count > 500) return stdev;
-  double mean       = (double) sum   / (count);
-  double meansq     = (double) sumSq / (count);
+  double mean       = (double) sum   / (count); // calc summary statistics
+  double meansq     = (double) sumSq / (count); // calc summary statistics
 
-  double variance   = (double) meansq - (pow(mean, 2));
-  double u_variance = (double) variance * count / (count - 1);
+  double variance   = (double) meansq - (pow(mean, 2));        // var = mean of sqares - square of means
+  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
   double u_stdev    = (double) sqrt(u_variance);
   stdev = round(u_stdev * 100);
 
