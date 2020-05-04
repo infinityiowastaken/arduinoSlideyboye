@@ -1,21 +1,28 @@
 // functions.ino
 // all of the functions used within the main program, separated out for simplicity
 
-void readButtons() { // button reading
+/*
+  my basic rules for encapsulating functions:
+  - functions can read from gpio internally
+  - functions can set and read from arrays, although they have to be passed to the functions
+  - functions cannot change
+*/
+
+void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(button0) == LOW && millis() - timings[3] > 300) {
-    timings[3] = millis();         // ratelimit/debounce for mode change
+  if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > 300) {
+    timings.debounce[0] = millis();         // ratelimit/debounce for mode change
 
     if (mode < 2)   mode ++;
-    else            mode = -1 * debug;
+    else            mode = -1 * doDebug;
     
-    if (mode == 0)  fullRefresh(mode, slide[0], slide[8], rotation); // fix for minor debug issue
+    if (mode == 0)  fullRefresh(mode, slide.position[0], slide.fancyPosition, rotation); // fix for minor debug issue
     else            dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(button1) == LOW && millis() - timings[4] > 300) {
-    timings[4] = millis();    // ratelimit/debounce for mode change
+  if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > 300) {
+    timings.debounce[1] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_F24);
     else if (mode == 1) Keyboard.write(KEY_DOWN);
@@ -32,8 +39,8 @@ void readButtons() { // button reading
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(button2) == LOW && millis() - timings[5] > 300) {
-    timings[5] = millis();    // ratelimit/debounce for mode change
+  if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > 300) {
+    timings.debounce[2] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_MUTE);
     else if (mode == 1) {
@@ -60,55 +67,55 @@ void readButtons() { // button reading
     fillBut2 = 5;
   } // button 2 performs an operation based upon the mode
 }
-void readSlide() {   // slider reading
-  for (int i = 3; i > 0; i--) slide[4+i] = slide[3+i]; // move last 3 values back in memory
-  slide[4] = analogRead(slider);                       // update most recent value
+void readSlide(slideS &slide, int mode) {   // slider reading
+  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back in memory
+  slide.reading[0] = analogRead(slider);                       // update most recent value
 
-  slide[9] = (2 * slide[4] + slide[5] + slide[6] + slide[7]) / 5; // create smoothed (weighted) value based off of last 4 inputs
-  slide[0] = calib(slide[9]);                                     // apply correction to smoothed value
-  slide[1] = round(((float) 512 - slide[0]) / divisor);           // turn smoothed value into one of 51 positions
+  slide.position[1] = (2 * slide.reading[0] + slide.reading[1] + slide.reading[2] + slide.reading[3]) / 5; // create smoothed (weighted) value based off of last 4 inputs
+  slide.position[0] = calib(slide.position[1]);                                     // apply correction to smoothed value
+  slide.value[0] = round(((float) 512 - slide.position[0]) / divisor);           // turn smoothed value into one of 51 positions
 
-  delta = slide[2] - slide[1]; // work out change in positions over last cycle
+  delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
-  if (abs(slide[3] - slide[0]) < divisor + 5) delta = 0;    // slight hysteresis to reduce jitter - only allows changes 
-                                                            // if last two values have significant change between them
+  if (abs(slide.position[2] - slide.position[0]) < divisor + 5) delta = 0;    // slight hysteresis to reduce jitter - only allows changes 
+                                                                              // if last two values have significant change between them
 
   if (delta != 0) {
     for (int i = 0; i < abs(delta); i++) {
       if (delta > 0) {
         if (mode == 0) {
           Consumer.write(MEDIA_VOL_UP);
-          slide[8] += 2;      // change percentage for volume
+          slide.fancyPosition += 2;      // change percentage for volume
         }
         else if (mode == 1) Keyboard.write(KEY_EQUAL);
         else if (mode == 2) Keyboard.write(KEY_UP);
-        if (debug) log(43); // log '+'
+        if (doDebug) log(43); // log '+'
       } else {
         if (mode == 0) {
           Consumer.write(MEDIA_VOL_DOWN);
-          slide[8] -= 2;      // change percentage
+          slide.fancyPosition -= 2; // change percentage
         }
         else if (mode == 1) Keyboard.write(KEY_MINUS);
         else if (mode == 2) Keyboard.write(KEY_DOWN);
 
-        if (debug) log(45); // log '-'
+        if (doDebug) log(45); // log '-'
       }
     }
-    if (slide[8] < 0 || slide[8] > 100) { // if percentage outside bounds, remake the value
-      slide[8] = 2 * round( (float) slide[0] * 0.09765625 * 0.5 );
+    if (slide.fancyPosition < 0 || slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
+      slide.fancyPosition = 2 * round( (float) slide.position[0] * 0.09765625 * 0.5 );
     }
 
-    dispSlide(slide[0], slide[8], mode); // display slider on screen
+    dispSlide(slide.position[0], slide.fancyPosition, mode); // display slider on screen
 
-    slide[2] = slide[1]; // set previous position
-    slide[3] = slide[0]; // set previous value
+    slide.position[2] = slide.position[0]; // set previous position
+    slide.value[1]    = slide.value[0];    // set previous value
   }
 }
 void readRotate() {  // encoder reading
   uint32_t t = millis();
-  if (t - timings[2] > 13) { // 13ms debounce on input, 76hz max speed
-    if (digitalRead(dirPin) == digitalRead(rotPin)) {
-      if (lastDir || !lastDir && t - timings[2] > 125) { // if direction change, more delay is needed
+  if (t - timings.debounce[3] > 13) { // 13ms debounce on input, 76hz max speed
+    if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
+      if (lastDir || !lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
         rotation++;
         if      (mode == 0) Keyboard.write(KEY_F23);
         else if (mode == 1) Keyboard.write(KEY_RIGHT);
@@ -119,11 +126,11 @@ void readRotate() {  // encoder reading
           Keyboard.releaseAll();
         }
         lastDir = true;
-        if (debug) log(44); // log '>'
+        if (doDebug) log(44); // log '>'
       }
     }
-    else {
-      if (!lastDir || lastDir && t - timings[2] > 125) { // if direction change, more delay is needed
+    else { // rotation to the left
+      if (!lastDir || lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
         rotation--;
         if      (mode == 0) Keyboard.write(KEY_F22);
         else if (mode == 1) Keyboard.write(KEY_LEFT);
@@ -133,7 +140,7 @@ void readRotate() {  // encoder reading
           delay(17);
           Keyboard.releaseAll();
         }
-        if (debug) log(46); // log '<'
+        if (doDebug) log(46); // log '<'
         lastDir = false;
       }
     }
@@ -141,14 +148,14 @@ void readRotate() {  // encoder reading
     updateRot = true; // because this can (and will) interrupt other lcd writes, it instead sets a flag and
                       // will be updated when the cycle next ends
     
-    timings[2] = t;
+    timings.debounce[3] = t;
   } 
 }
 
 void showDebug() {
-  timings[6] = millis();
+  timings.debug = millis();
 
-  if (!hideLed) leds[0] = CHSV(timings[6] / 10 , rotation, (slide[0] * 3 / 16) + 64);
+  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 3 / 16) + 64);
   else          leds[0] = CHSV(0, 0, 0);
   FastLED.show();
 
@@ -160,15 +167,15 @@ void showDebug() {
   oled.setFont(Adafruit5x7);
 
   oled.setCursor(61,0);
-  if      (slide[9] < 10)   oled.print(" ");
-  else if (slide[9] < 100)  oled.print(" ");
-  else if (slide[9] < 1000) oled.print(" ");
-  oled.print(slide[9]);
+  if      (slide.position[1] < 10)   oled.print(" ");
+  else if (slide.position[1] < 100)  oled.print(" ");
+  else if (slide.position[1] < 1000) oled.print(" ");
+  oled.print(slide.position[1]);
   oled.print(" / ");
-  if      (slide[0] < 10)   oled.print(" ");
-  else if (slide[0] < 100)  oled.print(" ");
-  else if (slide[0] < 1000) oled.print(" ");
-  oled.print(slide[0]);
+  if      (slide.position[0] < 10)   oled.print(" ");
+  else if (slide.position[0] < 100)  oled.print(" ");
+  else if (slide.position[0] < 1000) oled.print(" ");
+  oled.print(slide.position[0]);
 
   oled.setCursor(109,1);
   if      (abs(rotation) < 10)  oled.print(" ");
@@ -178,7 +185,7 @@ void showDebug() {
   oled.print(rotation);
 
   if (doStdev) {
-    addToStdev(slide[0]);
+    addToStdev(slide.position[0]);
     oled.setCursor(79,2);
     oled.print("sd: ");
     oled.print(calcStdev() / 100);
@@ -188,12 +195,12 @@ void showDebug() {
   }
   
   oled.setCursor(67, 3);
-  if ((1 + millis() - timings[0]) < 10)   oled.print(" ");
-  oled.print((1 + millis() - timings[0])); // time for entire cycle
+  if ((1 + millis() - timings.start) < 10)   oled.print(" ");
+  oled.print((1 + millis() - timings.start)); // time for entire cycle
   oled.print("ms");
 
   oled.print(" (");
-  oled.print(1 + timings[6] - timings[0]);
+  oled.print(millis() - timings.debug);
   oled.print("ms)");
 
   // oled.setFont(Adafruit5x7);

@@ -7,27 +7,46 @@
 
 # 7 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino" 2
 # 28 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
-uint32_t timings[7];
-/* 
+struct timingsS {
+  uint32_t start; // set at start of cycle
+  uint32_t readings; // set after slider/buttons are read
+  uint32_t debounce[4]; // set by all functions that require a debounce
+  uint32_t debug; // set at start of debug print
+};
+struct slideS {
+  int reading[4];
+  int position[3];
+  byte value[2];
+  byte fancyPosition;
+  /*
 
-timings[] array stores timings information
+  reading[] array stores last 4 raw readings of the slider:
 
-  0  set at start of cycle
+    0     most recent
 
-  1  set after slider is read
+    3     oldest
 
-  2  set after interrupt is read
+  position[] array stores data relating to the raw values:
 
-  3  set when button0 succeeds
+    0     current position, calibrated and smoothed
 
-  4  set when button1 succeeds
+    1     current position, uncalibrated and smoothed
 
-  5  set when button2 succeeds
+    2     last position, calibrated and smoothed
 
-  6  set at start of debug print 
+  value[] array stores the current and previous notch for volume
 
-*/
-# 40 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+    0     current
+
+    1     previous
+
+  */
+# 51 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+};
+
+timingsS timings;
+slideS slide;
+
 // char last[12]; // no longer in use
 /*
 
@@ -38,33 +57,12 @@ last[] array stores last operations performed:
   15 least recent value 
 
 */
-# 47 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+# 63 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 int delta, rotation, fillBut, fillBut2, mode, unsmoothed;
 
 int count, stdev; // debug modes for calculating stdev of slider
 long sum, sumSq;
 
-int slide[10];
-/*
-
-slide[] array stores data relating to the slider:
-
-  0     current position, calibrated and smoothed
-
-  1     current value
-
-  2     last position, calibrated and smoothed
-
-  3     last value
-
-  4 - 7 last 4 readings, calibrated but not smoothed
-
-  8     fancy position (percentage)
-
-  9     unsmoothed, uncalibrated position
-
-*/
-# 64 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 bool updateRot, lastDir, doStdev, hideLed, hideDisp;
 
 SSD1306AsciiAvrI2c oled;
@@ -90,19 +88,19 @@ void setup() {
   FastLED.addLeds<WS2812B, 9 /* single led on board*/, RGB>(leds, 1);
   leds[0] = CHSV(0, 0, 0);
 
-  slide[4] = analogRead(A0); // init slider readings
-  slide[8] = 2 * (((float) slide[4] * 0.09765625 * 0.5)>=0?(long)(((float) slide[4] * 0.09765625 * 0.5)+0.5):(long)(((float) slide[4] * 0.09765625 * 0.5)-0.5));
+  slide.reading[0] = analogRead(A0); // init slider readings
+  slide.fancyPosition = 2 * (((float) slide.reading[0] * 0.09765625 * 0.5)>=0?(long)(((float) slide.reading[0] * 0.09765625 * 0.5)+0.5):(long)(((float) slide.reading[0] * 0.09765625 * 0.5)-0.5));
 
-  fullRefresh(0, slide[1], slide[6], 0); // default values for display
+  fullRefresh(0, slide.reading[0], slide.fancyPosition, 0); // default values for display
 }
 
 void loop() {
-  timings[0] = millis();
+  timings.start = millis();
 
-  readButtons(); // button readings
-  readSlide(); // slider readings
+  readButtons(timings, mode); // button readings
+  readSlide(slide, mode); // slider readings
 
-  timings[1] = millis();
+  timings.readings = millis();
 
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
@@ -114,21 +112,33 @@ void loop() {
 // functions.ino
 // all of the functions used within the main program, separated out for simplicity
 
-void readButtons() { // button reading
+/*
+
+  my basic rules for encapsulating functions:
+
+  - functions can read from gpio internally
+
+  - functions can set and read from arrays, although they have to be passed to the functions
+
+  - functions cannot change
+
+*/
+# 11 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(6) == 0x0 && millis() - timings[3] > 300) {
-    timings[3] = millis(); // ratelimit/debounce for mode change
+  if (digitalRead(6) == 0x0 && millis() - timings.debounce[0] > 300) {
+    timings.debounce[0] = millis(); // ratelimit/debounce for mode change
 
     if (mode < 2) mode ++;
     else mode = -1 * 1 /* shows timings (and last instructions) as a mode*/;
 
-    if (mode == 0) fullRefresh(mode, slide[0], slide[8], rotation); // fix for minor debug issue
+    if (mode == 0) fullRefresh(mode, slide.position[0], slide.fancyPosition, rotation); // fix for minor debug issue
     else dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(5) == 0x0 && millis() - timings[4] > 300) {
-    timings[4] = millis(); // ratelimit/debounce for mode change
+  if (digitalRead(5) == 0x0 && millis() - timings.debounce[1] > 300) {
+    timings.debounce[1] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_F24);
     else if (mode == 1) Keyboard.write(KEY_DOWN);
@@ -145,8 +155,8 @@ void readButtons() { // button reading
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(4) == 0x0 && millis() - timings[5] > 300) {
-    timings[5] = millis(); // ratelimit/debounce for mode change
+  if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 300) {
+    timings.debounce[2] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_MUTE);
     else if (mode == 1) {
@@ -173,25 +183,25 @@ void readButtons() { // button reading
     fillBut2 = 5;
   } // button 2 performs an operation based upon the mode
 }
-void readSlide() { // slider reading
-  for (int i = 3; i > 0; i--) slide[4+i] = slide[3+i]; // move last 3 values back in memory
-  slide[4] = analogRead(A0); // update most recent value
+void readSlide(slideS &slide, int mode) { // slider reading
+  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back in memory
+  slide.reading[0] = analogRead(A0); // update most recent value
 
-  slide[9] = (2 * slide[4] + slide[5] + slide[6] + slide[7]) / 5; // create smoothed (weighted) value based off of last 4 inputs
-  slide[0] = calib(slide[9]); // apply correction to smoothed value
-  slide[1] = ((((float) 512 - slide[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)>=0?(long)((((float) 512 - slide[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)+0.5):(long)((((float) 512 - slide[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)-0.5)); // turn smoothed value into one of 51 positions
+  slide.position[1] = (2 * slide.reading[0] + slide.reading[1] + slide.reading[2] + slide.reading[3]) / 5; // create smoothed (weighted) value based off of last 4 inputs
+  slide.position[0] = calib(slide.position[1]); // apply correction to smoothed value
+  slide.value[0] = ((((float) 512 - slide.position[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)>=0?(long)((((float) 512 - slide.position[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)+0.5):(long)((((float) 512 - slide.position[0]) / 20 /* gives 51.2 steps across 0-1023 range*/)-0.5)); // turn smoothed value into one of 51 positions
 
-  delta = slide[2] - slide[1]; // work out change in positions over last cycle
+  delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
-  if (((slide[3] - slide[0])>0?(slide[3] - slide[0]):-(slide[3] - slide[0])) < 20 /* gives 51.2 steps across 0-1023 range*/ + 5) delta = 0; // slight hysteresis to reduce jitter - only allows changes 
-                                                            // if last two values have significant change between them
+  if (((slide.position[2] - slide.position[0])>0?(slide.position[2] - slide.position[0]):-(slide.position[2] - slide.position[0])) < 20 /* gives 51.2 steps across 0-1023 range*/ + 5) delta = 0; // slight hysteresis to reduce jitter - only allows changes 
+                                                                              // if last two values have significant change between them
 
   if (delta != 0) {
     for (int i = 0; i < ((delta)>0?(delta):-(delta)); i++) {
       if (delta > 0) {
         if (mode == 0) {
           Consumer.write(MEDIA_VOL_UP);
-          slide[8] += 2; // change percentage for volume
+          slide.fancyPosition += 2; // change percentage for volume
         }
         else if (mode == 1) Keyboard.write(KEY_EQUAL);
         else if (mode == 2) Keyboard.write(KEY_UP);
@@ -199,7 +209,7 @@ void readSlide() { // slider reading
       } else {
         if (mode == 0) {
           Consumer.write(MEDIA_VOL_DOWN);
-          slide[8] -= 2; // change percentage
+          slide.fancyPosition -= 2; // change percentage
         }
         else if (mode == 1) Keyboard.write(KEY_MINUS);
         else if (mode == 2) Keyboard.write(KEY_DOWN);
@@ -207,21 +217,21 @@ void readSlide() { // slider reading
         if (1 /* shows timings (and last instructions) as a mode*/) log(45); // log '-'
       }
     }
-    if (slide[8] < 0 || slide[8] > 100) { // if percentage outside bounds, remake the value
-      slide[8] = 2 * (((float) slide[0] * 0.09765625 * 0.5)>=0?(long)(((float) slide[0] * 0.09765625 * 0.5)+0.5):(long)(((float) slide[0] * 0.09765625 * 0.5)-0.5));
+    if (slide.fancyPosition < 0 || slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
+      slide.fancyPosition = 2 * (((float) slide.position[0] * 0.09765625 * 0.5)>=0?(long)(((float) slide.position[0] * 0.09765625 * 0.5)+0.5):(long)(((float) slide.position[0] * 0.09765625 * 0.5)-0.5));
     }
 
-    dispSlide(slide[0], slide[8], mode); // display slider on screen
+    dispSlide(slide.position[0], slide.fancyPosition, mode); // display slider on screen
 
-    slide[2] = slide[1]; // set previous position
-    slide[3] = slide[0]; // set previous value
+    slide.position[2] = slide.position[0]; // set previous position
+    slide.value[1] = slide.value[0]; // set previous value
   }
 }
 void readRotate() { // encoder reading
   uint32_t t = millis();
-  if (t - timings[2] > 13) { // 13ms debounce on input, 76hz max speed
-    if (digitalRead(7) == digitalRead(1 /* tx pin, blocks serial out unfortunately*/)) {
-      if (lastDir || !lastDir && t - timings[2] > 125) { // if direction change, more delay is needed
+  if (t - timings.debounce[3] > 13) { // 13ms debounce on input, 76hz max speed
+    if (digitalRead(7) == digitalRead(1 /* tx pin, blocks serial out unfortunately*/)) { // rotation to the right
+      if (lastDir || !lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
         rotation++;
         if (mode == 0) Keyboard.write(KEY_F23);
         else if (mode == 1) Keyboard.write(KEY_RIGHT);
@@ -235,8 +245,8 @@ void readRotate() { // encoder reading
         if (1 /* shows timings (and last instructions) as a mode*/) log(44); // log '>'
       }
     }
-    else {
-      if (!lastDir || lastDir && t - timings[2] > 125) { // if direction change, more delay is needed
+    else { // rotation to the left
+      if (!lastDir || lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
         rotation--;
         if (mode == 0) Keyboard.write(KEY_F22);
         else if (mode == 1) Keyboard.write(KEY_LEFT);
@@ -254,14 +264,14 @@ void readRotate() { // encoder reading
     updateRot = true; // because this can (and will) interrupt other lcd writes, it instead sets a flag and
                       // will be updated when the cycle next ends
 
-    timings[2] = t;
+    timings.debounce[3] = t;
   }
 }
 
 void showDebug() {
-  timings[6] = millis();
+  timings.debug = millis();
 
-  if (!hideLed) leds[0] = CHSV(timings[6] / 10 , rotation, (slide[0] * 3 / 16) + 64);
+  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 3 / 16) + 64);
   else leds[0] = CHSV(0, 0, 0);
   FastLED.show();
 
@@ -273,15 +283,15 @@ void showDebug() {
   oled.setFont(Adafruit5x7);
 
   oled.setCursor(61,0);
-  if (slide[9] < 10) oled.print(" ");
-  else if (slide[9] < 100) oled.print(" ");
-  else if (slide[9] < 1000) oled.print(" ");
-  oled.print(slide[9]);
+  if (slide.position[1] < 10) oled.print(" ");
+  else if (slide.position[1] < 100) oled.print(" ");
+  else if (slide.position[1] < 1000) oled.print(" ");
+  oled.print(slide.position[1]);
   oled.print(" / ");
-  if (slide[0] < 10) oled.print(" ");
-  else if (slide[0] < 100) oled.print(" ");
-  else if (slide[0] < 1000) oled.print(" ");
-  oled.print(slide[0]);
+  if (slide.position[0] < 10) oled.print(" ");
+  else if (slide.position[0] < 100) oled.print(" ");
+  else if (slide.position[0] < 1000) oled.print(" ");
+  oled.print(slide.position[0]);
 
   oled.setCursor(109,1);
   if (((rotation)>0?(rotation):-(rotation)) < 10) oled.print(" ");
@@ -291,7 +301,7 @@ void showDebug() {
   oled.print(rotation);
 
   if (doStdev) {
-    addToStdev(slide[0]);
+    addToStdev(slide.position[0]);
     oled.setCursor(79,2);
     oled.print("sd: ");
     oled.print(calcStdev() / 100);
@@ -301,12 +311,12 @@ void showDebug() {
   }
 
   oled.setCursor(67, 3);
-  if ((1 + millis() - timings[0]) < 10) oled.print(" ");
-  oled.print((1 + millis() - timings[0])); // time for entire cycle
+  if ((1 + millis() - timings.start) < 10) oled.print(" ");
+  oled.print((1 + millis() - timings.start)); // time for entire cycle
   oled.print("ms");
 
   oled.print(" (");
-  oled.print(1 + timings[6] - timings[0]);
+  oled.print(millis() - timings.debug);
   oled.print("ms)");
 
   // oled.setFont(Adafruit5x7);
@@ -397,25 +407,25 @@ void dispEncod(int value) {
 void dispInd(int mode) {
   if (mode == -1 && !hideLed) {
     
-# 286 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 293 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 286 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 293 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<0);
     
-# 287 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 294 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 287 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 294 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<5);
   } else {
     
-# 289 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 296 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 289 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 296 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<0);
     
-# 290 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 297 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 290 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 297 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<5);
   }
 }
