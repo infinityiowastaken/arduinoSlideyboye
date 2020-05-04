@@ -26,6 +26,11 @@
   },
   {
     "Sourcefile": "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\build\\sketch\\slideyboye.ino.cpp",
+    "Include": "FastLED.h",
+    "Includepath": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED"
+  },
+  {
+    "Sourcefile": "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\build\\sketch\\slideyboye.ino.cpp",
     "Include": "",
     "Includepath": ""
   },
@@ -121,6 +126,56 @@
   },
   {
     "Sourcefile": "C:\\Users\\nmail\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\avr\\1.8.2\\libraries\\HID\\src\\HID.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\FastLED.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\bitswap.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\colorpalettes.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\colorutils.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\hsv2rgb.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\lib8tion.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\noise.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\platforms.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\power_mgt.cpp",
+    "Include": "",
+    "Includepath": ""
+  },
+  {
+    "Sourcefile": "C:\\Users\\nmail\\Documents\\Arduino\\libraries\\FastLED\\wiring.cpp",
     "Include": "",
     "Includepath": ""
   }
