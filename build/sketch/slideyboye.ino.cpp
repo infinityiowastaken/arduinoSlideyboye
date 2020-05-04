@@ -8,7 +8,7 @@
 
 #include <FastLED.h>      // led lib
 
-#define addr  0x3C
+#define addr  0x3C // i2c addr of display
 
 #define slider  A0
 
@@ -19,7 +19,7 @@
 #define button0  6
 #define dirPin   7
 #define ledPin   9 // single led on board
-#define ledPin2 19 // expansion strip
+#define ledPin2 19 // expansion strip, on A1 which maps to pin 19
 
 #define divisor 20 // gives 51.2 steps across 0-1023 range
 #define doDebug  1 // shows timings (and last instructions) as a mode
@@ -28,11 +28,21 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
+#define buttonDebounce  150 // time between accepted readings
+#define changeDebounce  150 // time for rotation in different directions
+#define   turnDebounce   13 // time for multiple rotations in same direction
+
 struct timingsS {
-  unsigned int start;       // set at start of cycle
-  unsigned int readings;    // set after slider/buttons are read
+  uint32_t start;       // set at start of cycle
+  uint32_t readings;    // set after slider/buttons are read
+  uint32_t debug;       // set at start of debug print
   unsigned int debounce[4]; // set by all functions that require a debounce
-  unsigned int debug;       // set at start of debug print
+  /*
+    debounce[] array stores the last time functions were triggered such that async 
+    debouncing can be done for when they are triggered
+      0 - 2 store the values for button0 through button2
+      3     stores the value for the encoder
+  */ 
 };
 struct slideS {
   int reading[4];
@@ -40,16 +50,16 @@ struct slideS {
   byte value[2];
   byte fancyPosition;
   /*
-  reading[] array stores last 4 raw readings of the slider:
-    0     most recent
-    3     oldest
-  position[] array stores data relating to the raw values:
-    0     current position, calibrated and smoothed
-    1     current position, uncalibrated and smoothed
-    2     last position, calibrated and smoothed
-  value[] array stores the current and previous notch for volume
-    0     current
-    1     previous
+    reading[] array stores last 4 raw readings of the slider:
+      0     most recent
+      3     oldest
+    position[] array stores data relating to the raw values:
+      0     current position, calibrated and smoothed
+      1     current position, uncalibrated and smoothed
+      2     last position, calibrated and smoothed
+    value[] array stores the current and previous notch for volume
+      0     current
+      1     previous
   */
 };
 
@@ -58,9 +68,9 @@ slideS slide;
 
 // char last[12]; // no longer in use
 /*
-last[] array stores last operations performed:
-  0  most recent value
-  15 least recent value 
+  last[] array stores last operations performed:
+    0  most recent value
+    15 least recent value 
 */
 
 int delta, rotation, fillBut, fillBut2, mode;
@@ -73,9 +83,9 @@ bool updateRot, lastDir, doStdev, hideLed, hideDisp;
 SSD1306AsciiAvrI2c oled;
 CRGB leds[1];
 
-#line 73 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 83 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup();
-#line 99 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 109 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void loop();
 #line 10 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void readButtons(timingsS &timings, int &mode);
@@ -85,12 +95,12 @@ void readSlide(slideS &slide, int mode);
 void readRotate();
 #line 155 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void showDebug();
-#line 213 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-void addToStdev(int value);
-#line 225 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-void resetStdev();
-#line 231 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-int calcStdev();
+#line 214 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+void addToStdev(int value, int &count, long &sum, long &sumSq);
+#line 226 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+void resetStdev(int &count, long &sum, long &sumSq);
+#line 232 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+void calcStdev(int &count, long &sum, long &sumSq, int &stdev);
 #line 249 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void fullRefresh(int mode, int value, int position, int rotation);
 #line 255 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
@@ -107,7 +117,7 @@ void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1);
 int calib(int input);
 #line 380 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int smooth(int values[4]);
-#line 73 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 83 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup() {
   // Serial.begin(9600);              // init serial at 9600bps, no longer used as tx pin in use
 
@@ -144,7 +154,7 @@ void loop() {
 
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
-  // if (mode == -1) showDebug();
+  if (mode == -1) showDebug();
 
   delay(1); // allows uploads to happen without resets
 }
@@ -153,15 +163,15 @@ void loop() {
 // all of the functions used within the main program, separated out for simplicity
 
 /*
-  my basic rules for encapsulating functions:
-  - functions can read from gpio internally
-  - functions can set and read from structures, although they have to be passed to the functions
+  things i let functions do:
+  - read from gpio internally
+  - set and read from structures, although they have to be passed to the functions
 */
 
 void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > 300) {
+  if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > buttonDebounce) {
     timings.debounce[0] = millis();         // ratelimit/debounce for mode change
 
     if (mode < 2)   mode ++;
@@ -171,7 +181,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     else            dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > 300) {
+  if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > buttonDebounce) {
     timings.debounce[1] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_F24);
@@ -183,13 +193,13 @@ void readButtons(timingsS &timings, int &mode) { // button reading
       delay(17);
       Keyboard.releaseAll();
     }
-    else if (mode == -1) resetStdev();
+    else if (mode == -1) resetStdev(count, sum, sumSq);
 
     log(47); // log o
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > 300) {
+  if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > buttonDebounce) {
     timings.debounce[2] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_MUTE);
@@ -217,13 +227,13 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     fillBut2 = 5;
   } // button 2 performs an operation based upon the mode
 }
-void readSlide(slideS &slide, int mode) {        // slider reading
-  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back in memory
-  slide.reading[0] = analogRead(slider);                       // update most recent value
+void readSlide(slideS &slide, int mode) { // slider reading
+  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back one place in array
+  slide.reading[0] = analogRead(slider);                                // update most recent value to current
 
-  slide.position[1] = smooth(slide.reading);
-  slide.position[0] = calib(slide.position[1]);                                     // apply correction to smoothed value
-  slide.value[0] = round(((float) 512 - slide.position[0]) / divisor);           // turn smoothed value into one of 51 positions
+  slide.position[1] = smooth(slide.reading);                           // take weighted mean of last 4 samples to reduce error
+  slide.position[0] = calib(slide.position[1]);                        // apply correction to smoothed value
+  slide.value[0] = round(((float) 512 - slide.position[0]) / divisor); // turn smoothed & corrected value into one of 51 positions
 
   delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
@@ -261,11 +271,11 @@ void readSlide(slideS &slide, int mode) {        // slider reading
     slide.value[1]    = slide.value[0];    // set previous value
   }
 }
-void readRotate() { // encoder reading, interrupt function
+void readRotate() { // encoder reading, interrupt-called function
   uint32_t t = millis();
-  if (t - timings.debounce[3] > 13) { // 13ms debounce on input, 76hz max speed
+  if (t - timings.debounce[3] > turnDebounce) { // 13ms debounce on input, 76hz max speed
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
-      if (lastDir || !lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
+      if (lastDir || !lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation++;
         if      (mode == 0) Keyboard.write(KEY_F23);
         else if (mode == 1) Keyboard.write(KEY_RIGHT);
@@ -280,7 +290,7 @@ void readRotate() { // encoder reading, interrupt function
       }
     }
     else { // rotation to the left
-      if (!lastDir || lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
+      if (!lastDir || lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation--;
         if      (mode == 0) Keyboard.write(KEY_F22);
         else if (mode == 1) Keyboard.write(KEY_LEFT);
@@ -306,7 +316,7 @@ void readRotate() { // encoder reading, interrupt function
 void showDebug() { // if doDebug is one, mode -1 can be selected, which will run this each loop
   timings.debug = millis();
 
-  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 3 / 16) + 64);
+  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 7 / 32) + 32);
   else          leds[0] = CHSV(0, 0, 0);
   FastLED.show();
 
@@ -336,32 +346,33 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   oled.print(rotation);
 
   if (doStdev) {
-    addToStdev(slide.position[0]);
+    addToStdev(slide.position[0], count, sum, sumSq);
+    calcStdev(count, sum, sumSq, stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(calcStdev() / 100);
+    oled.print(stdev);
     oled.print(".");
-    if (calcStdev() % 100 < 10) oled.print("0");
-    oled.print(calcStdev() % 100);
+    if (stdev % 100 < 10) oled.print("0");
+    oled.print(stdev % 100);
   }
   
-  oled.setCursor(67, 3);
-  if ((1 + millis() - timings.start) < 10)   oled.print(" ");
-  oled.print((1 + millis() - timings.start)); // time for entire cycle
+  oled.setCursor(61, 3);
+  if ((1 + timings.debug - timings.start) < 10)   oled.print(" ");
+  oled.print((1 + timings.debug - timings.start)); // time for entire cycle
   oled.print("ms");
 
   oled.print(" (");
   oled.print(millis() - timings.debug);
-  oled.print("ms)");
+  oled.print("ms) ");
 
   // oled.setFont(Adafruit5x7);
   // oled.setCursor(0,6);
   // oled.print("outputs: ");
   // oled.setFont(arrows);
-  // oled.println(last);
+  // oled.println(last); // no longer used
   }
 }
-void addToStdev(int value) {
+void addToStdev(int value, int &count, long &sum, long &sumSq) { // adds an integer value to the summary statistics
   if (count >= 500) {
     doStdev = false;
     return;
@@ -369,18 +380,19 @@ void addToStdev(int value) {
   count ++;
   sum += value;
   sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
-                          // count > 2000, in which case an online algo may be needed, but
-                          // 500 samples should be more than enough for anything i can thi
-                          // -nk of where stdev is needed
+                          // count > 2000, in which case an online algorithm may be needed
+                          // for efficiency, but 2k samples should be more than enough for 
+                          // anything i can think of where stdev could be used
 }
-void resetStdev () {
+void resetStdev (int &count, long &sum, long &sumSq) { // resets the summary statistics
   count = 0;
   sum = 0;
   sumSq = 0;
   doStdev = true;
 }
-int calcStdev() {
-  if (count > 500) return stdev;
+void calcStdev(int &count, long &sum, long &sumSq, int &stdev) {
+  if (count > 500) return;
+
   double mean       = (double) sum   / (count); // calc summary statistics
   double meansq     = (double) sumSq / (count); // calc summary statistics
 
@@ -388,8 +400,6 @@ int calcStdev() {
   double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
   double u_stdev    = (double) sqrt(u_variance);
   stdev = round(u_stdev * 100);
-
-  return stdev;
 }
 /* void log(int action) {
   memmove(&last[1], &last[0], (11) * sizeof(char));

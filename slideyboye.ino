@@ -5,7 +5,7 @@
 
 #include <FastLED.h>      // led lib
 
-#define addr  0x3C
+#define addr  0x3C // i2c addr of display
 
 #define slider  A0
 
@@ -16,7 +16,7 @@
 #define button0  6
 #define dirPin   7
 #define ledPin   9 // single led on board
-#define ledPin2 19 // expansion strip
+#define ledPin2 19 // expansion strip, on A1 which maps to pin 19
 
 #define divisor 20 // gives 51.2 steps across 0-1023 range
 #define doDebug  1 // shows timings (and last instructions) as a mode
@@ -25,11 +25,21 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
+#define buttonDebounce  150 // time between accepted readings
+#define changeDebounce  150 // time for rotation in different directions
+#define   turnDebounce   13 // time for multiple rotations in same direction
+
 struct timingsS {
-  unsigned int start;       // set at start of cycle
-  unsigned int readings;    // set after slider/buttons are read
+  uint32_t start;       // set at start of cycle
+  uint32_t readings;    // set after slider/buttons are read
+  uint32_t debug;       // set at start of debug print
   unsigned int debounce[4]; // set by all functions that require a debounce
-  unsigned int debug;       // set at start of debug print
+  /*
+    debounce[] array stores the last time functions were triggered such that async 
+    debouncing can be done for when they are triggered
+      0 - 2 store the values for button0 through button2
+      3     stores the value for the encoder
+  */ 
 };
 struct slideS {
   int reading[4];
@@ -37,35 +47,39 @@ struct slideS {
   byte value[2];
   byte fancyPosition;
   /*
-  reading[] array stores last 4 raw readings of the slider:
-    0     most recent
-    3     oldest
-  position[] array stores data relating to the raw values:
-    0     current position, calibrated and smoothed
-    1     current position, uncalibrated and smoothed
-    2     last position, calibrated and smoothed
-  value[] array stores the current and previous notch for volume
-    0     current
-    1     previous
+    reading[] array stores last 4 raw readings of the slider:
+      0     most recent
+      3     oldest
+    position[] array stores data relating to the raw values:
+      0     current position, calibrated and smoothed
+      1     current position, uncalibrated and smoothed
+      2     last position, calibrated and smoothed
+    value[] array stores the current and previous notch for volume
+      0     current
+      1     previous
   */
+};
+struct stdevS {
+  bool doStdev;
+  int  count; // number of items in sample
+  int  stdev; // working standard deviation in sample
+  long sum;   // sum of all sample elements
+  long sumSq; // sum of squares of all sample elements
 };
 
 timingsS timings;
 slideS slide;
-
+stdevS stdev;
 // char last[12]; // no longer in use
 /*
-last[] array stores last operations performed:
-  0  most recent value
-  15 least recent value 
+  last[] array stores last operations performed:
+    0  most recent value
+    15 least recent value 
 */
 
 int delta, rotation, fillBut, fillBut2, mode;
 
-int  count, stdev; // debug modes for calculating stdev of slider
-long sum, sumSq;
-
-bool updateRot, lastDir, doStdev, hideLed, hideDisp;
+bool updateRot, lastDir, hideLed, hideDisp;
 
 SSD1306AsciiAvrI2c oled;
 CRGB leds[1];

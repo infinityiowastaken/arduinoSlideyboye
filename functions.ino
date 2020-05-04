@@ -2,15 +2,15 @@
 // all of the functions used within the main program, separated out for simplicity
 
 /*
-  my basic rules for encapsulating functions:
-  - functions can read from gpio internally
-  - functions can set and read from structures, although they have to be passed to the functions
+  things i let functions do:
+  - read from gpio internally
+  - set and read from structures, although they have to be passed to the functions
 */
 
 void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > 300) {
+  if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > buttonDebounce) {
     timings.debounce[0] = millis();         // ratelimit/debounce for mode change
 
     if (mode < 2)   mode ++;
@@ -20,7 +20,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     else            dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > 300) {
+  if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > buttonDebounce) {
     timings.debounce[1] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_F24);
@@ -32,13 +32,13 @@ void readButtons(timingsS &timings, int &mode) { // button reading
       delay(17);
       Keyboard.releaseAll();
     }
-    else if (mode == -1) resetStdev();
+    else if (mode == -1) resetStdev(stdev);
 
     log(47); // log o
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > 300) {
+  if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > buttonDebounce) {
     timings.debounce[2] = millis();    // ratelimit/debounce for mode change
 
     if      (mode == 0) Keyboard.write(KEY_MUTE);
@@ -66,13 +66,13 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     fillBut2 = 5;
   } // button 2 performs an operation based upon the mode
 }
-void readSlide(slideS &slide, int mode) {        // slider reading
-  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back in memory
-  slide.reading[0] = analogRead(slider);                       // update most recent value
+void readSlide(slideS &slide, int mode) { // slider reading
+  for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back one place in array
+  slide.reading[0] = analogRead(slider);                                // update most recent value to current
 
-  slide.position[1] = smooth(slide.reading);
-  slide.position[0] = calib(slide.position[1]);                                     // apply correction to smoothed value
-  slide.value[0] = round(((float) 512 - slide.position[0]) / divisor);           // turn smoothed value into one of 51 positions
+  slide.position[1] = smooth(slide.reading);                           // take weighted mean of last 4 samples to reduce error
+  slide.position[0] = calib(slide.position[1]);                        // apply correction to smoothed value
+  slide.value[0] = round(((float) 512 - slide.position[0]) / divisor); // turn smoothed & corrected value into one of 51 positions
 
   delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
@@ -110,11 +110,11 @@ void readSlide(slideS &slide, int mode) {        // slider reading
     slide.value[1]    = slide.value[0];    // set previous value
   }
 }
-void readRotate() { // encoder reading, interrupt function
+void readRotate() { // encoder reading, interrupt-called function
   uint32_t t = millis();
-  if (t - timings.debounce[3] > 13) { // 13ms debounce on input, 76hz max speed
+  if (t - timings.debounce[3] > turnDebounce) { // 13ms debounce on input, 76hz max speed
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
-      if (lastDir || !lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
+      if (lastDir || !lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation++;
         if      (mode == 0) Keyboard.write(KEY_F23);
         else if (mode == 1) Keyboard.write(KEY_RIGHT);
@@ -129,7 +129,7 @@ void readRotate() { // encoder reading, interrupt function
       }
     }
     else { // rotation to the left
-      if (!lastDir || lastDir && t - timings.debounce[3] > 125) { // if direction change, more delay is needed
+      if (!lastDir || lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation--;
         if      (mode == 0) Keyboard.write(KEY_F22);
         else if (mode == 1) Keyboard.write(KEY_LEFT);
@@ -155,7 +155,7 @@ void readRotate() { // encoder reading, interrupt function
 void showDebug() { // if doDebug is one, mode -1 can be selected, which will run this each loop
   timings.debug = millis();
 
-  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 3 / 16) + 64);
+  if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 7 / 32) + 32);
   else          leds[0] = CHSV(0, 0, 0);
   FastLED.show();
 
@@ -185,60 +185,61 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   oled.print(rotation);
 
   if (doStdev) {
-    addToStdev(slide.position[0]);
+    addToStdev(stdev, slide.position[0]);
+    calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(calcStdev() / 100);
+    oled.print(stdev.stdev);
     oled.print(".");
-    if (calcStdev() % 100 < 10) oled.print("0");
-    oled.print(calcStdev() % 100);
+    if (stdev.stdev % 100 < 10) oled.print("0");
+    oled.print(stdev.stdev % 100);
   }
   
-  oled.setCursor(67, 3);
-  if ((1 + millis() - timings.start) < 10)   oled.print(" ");
-  oled.print((1 + millis() - timings.start)); // time for entire cycle
+  oled.setCursor(61, 3);
+  if ((1 + timings.debug - timings.start) < 10)   oled.print(" ");
+  oled.print((1 + timings.debug - timings.start)); // time for entire cycle
   oled.print("ms");
 
   oled.print(" (");
   oled.print(millis() - timings.debug);
-  oled.print("ms)");
+  oled.print("ms) ");
 
   // oled.setFont(Adafruit5x7);
   // oled.setCursor(0,6);
   // oled.print("outputs: ");
   // oled.setFont(arrows);
-  // oled.println(last);
+  // oled.println(last); // no longer used
   }
 }
-void addToStdev(int value) {
-  if (count >= 500) {
-    doStdev = false;
+void addToStdev(stdevS &data, value) { // adds an integer value to the summary statistics
+  if (data.count >= 500) {
+    data.doStdev = false;
     return;
   };
-  count ++;
-  sum += value;
-  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
-                          // count > 2000, in which case an online algo may be needed, but
-                          // 500 samples should be more than enough for anything i can thi
-                          // -nk of where stdev is needed
+  data.count ++;
+  data.sum += value;
+  data.sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
+                          // count > 2000, in which case an online algorithm may be needed
+                          // for efficiency, but 2k samples should be more than enough for 
+                          // anything i can think of where stdev could be used
 }
-void resetStdev () {
-  count = 0;
-  sum = 0;
-  sumSq = 0;
-  doStdev = true;
+void resetStdev (stdevS &data) { // resets the summary statistics
+  data.count = 0;
+  data.sum = 0;
+  data.sumSq = 0;
+  data.doStdev = true;
 }
-int calcStdev() {
-  if (count > 500) return stdev;
-  double mean       = (double) sum   / (count); // calc summary statistics
-  double meansq     = (double) sumSq / (count); // calc summary statistics
+void calcStdev(stdevS &data) {
+  if (data.count > 500) return;
+
+  double mean       = (double) data.sum   / (data.count); // calc summary statistics
+  double meansq     = (double) data.sumSq / (data.count); // calc summary statistics
 
   double variance   = (double) meansq - (pow(mean, 2));        // var = mean of sqares - square of means
-  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
+  double u_variance = (double) variance * data.count / (data.count - 1); // correction for sample var vs real var
   double u_stdev    = (double) sqrt(u_variance);
-  stdev = round(u_stdev * 100);
 
-  return stdev;
+  data.stdev = round(u_stdev * 100);
 }
 /* void log(int action) {
   memmove(&last[1], &last[0], (11) * sizeof(char));
