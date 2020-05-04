@@ -55,10 +55,17 @@ struct slideS {
   */
 # 61 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 };
+struct stdevS {
+  bool doStdev;
+  int count; // number of items in sample
+  int stdev; // working standard deviation in sample
+  long sum; // sum of all sample elements
+  long sumSq; // sum of squares of all sample elements
+};
 
 timingsS timings;
 slideS slide;
-
+stdevS stdev;
 // char last[12]; // no longer in use
 /*
 
@@ -69,13 +76,10 @@ slideS slide;
     15 least recent value 
 
 */
-# 73 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+# 80 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 int delta, rotation, fillBut, fillBut2, mode;
 
-int count, stdev; // debug modes for calculating stdev of slider
-long sum, sumSq;
-
-bool updateRot, lastDir, doStdev, hideLed, hideDisp;
+bool updateRot, lastDir, hideLed, hideDisp;
 
 SSD1306AsciiAvrI2c oled;
 CRGB leds[1];
@@ -137,7 +141,7 @@ void loop() {
 void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(6) == 0x0 && millis() - timings.debounce[0] > 150 /* time between accepted readings*/) {
+  if (digitalRead(6) == 0x0 && millis() - timings.debounce[0] > 250 /* time between accepted readings*/) {
     timings.debounce[0] = millis(); // ratelimit/debounce for mode change
 
     if (mode < 2) mode ++;
@@ -147,7 +151,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     else dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(5) == 0x0 && millis() - timings.debounce[1] > 150 /* time between accepted readings*/) {
+  if (digitalRead(5) == 0x0 && millis() - timings.debounce[1] > 250 /* time between accepted readings*/) {
     timings.debounce[1] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_F24);
@@ -159,13 +163,13 @@ void readButtons(timingsS &timings, int &mode) { // button reading
       delay(17);
       Keyboard.releaseAll();
     }
-    else if (mode == -1) resetStdev(count, sum, sumSq);
+    else if (mode == -1) resetStdev(stdev);
 
     log(47); // log o
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 150 /* time between accepted readings*/) {
+  if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 250 /* time between accepted readings*/) {
     timings.debounce[2] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_MUTE);
@@ -311,15 +315,15 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   else if (rotation == 0) oled.print(" ");
   oled.print(rotation);
 
-  if (doStdev) {
-    addToStdev(slide.position[0], count, sum, sumSq);
-    calcStdev(count, sum, sumSq, stdev);
+  if (stdev.doStdev) {
+    addToStdev(stdev, slide.position[0]);
+    calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(stdev);
+    oled.print(stdev.stdev);
     oled.print(".");
-    if (stdev % 100 < 10) oled.print("0");
-    oled.print(stdev % 100);
+    if (stdev.stdev % 100 < 10) oled.print("0");
+    oled.print(stdev.stdev % 100);
   }
 
   oled.setCursor(61, 3);
@@ -338,34 +342,35 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   // oled.println(last); // no longer used
   }
 }
-void addToStdev(int value, int &count, long &sum, long &sumSq) { // adds an integer value to the summary statistics
-  if (count >= 500) {
-    doStdev = false;
+void addToStdev(stdevS &data, int value) { // adds an integer value to the summary statistics
+  if (data.count >= 500) {
+    data.doStdev = false;
     return;
   };
-  count ++;
-  sum += value;
-  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
+  data.count ++;
+  data.sum += value;
+  data.sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
                           // count > 2000, in which case an online algorithm may be needed
                           // for efficiency, but 2k samples should be more than enough for 
                           // anything i can think of where stdev could be used
 }
-void resetStdev (int &count, long &sum, long &sumSq) { // resets the summary statistics
-  count = 0;
-  sum = 0;
-  sumSq = 0;
-  doStdev = true;
+void resetStdev (stdevS &data) { // resets the summary statistics
+  data.count = 0;
+  data.sum = 0;
+  data.sumSq = 0;
+  data.doStdev = true;
 }
-void calcStdev(int &count, long &sum, long &sumSq, int &stdev) {
-  if (count > 500) return;
+void calcStdev(stdevS &data) { // updates calculation for standard deviation
+  if (data.count > 500) return;
 
-  double mean = (double) sum / (count); // calc summary statistics
-  double meansq = (double) sumSq / (count); // calc summary statistics
+  double mean = (double) data.sum / (data.count); // calc summary statistics
+  double meansq = (double) data.sumSq / (data.count); // calc summary statistics
 
   double variance = (double) meansq - (pow(mean, 2)); // var = mean of sqares - square of means
-  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
+  double u_variance = (double) variance * data.count / (data.count - 1); // correction for sample var vs real var
   double u_stdev = (double) sqrt(u_variance);
-  stdev = ((u_stdev * 100)>=0?(long)((u_stdev * 100)+0.5):(long)((u_stdev * 100)-0.5));
+
+  data.stdev = ((u_stdev * 100)>=0?(long)((u_stdev * 100)+0.5):(long)((u_stdev * 100)-0.5));
 }
 /* void log(int action) {
 
@@ -374,7 +379,7 @@ void calcStdev(int &count, long &sum, long &sumSq, int &stdev) {
   last[0] = action;
 
 } */
-# 246 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 247 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
      // no longer in use
 
 // things involving the display
@@ -458,25 +463,25 @@ void dispEncod(int value) {
 void dispInd(int mode) {
   if (mode == -1 && !hideLed) {
     
-# 328 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 328 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<0);
     
-# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<5);
   } else {
     
-# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<0);
     
-# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<5);
   }
 }

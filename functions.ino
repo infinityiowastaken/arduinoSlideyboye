@@ -184,7 +184,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   else if (rotation == 0)       oled.print(" ");
   oled.print(rotation);
 
-  if (doStdev) {
+  if (stdev.doStdev) {
     addToStdev(stdev, slide.position[0]);
     calcStdev(stdev);
     oled.setCursor(79,2);
@@ -211,7 +211,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   // oled.println(last); // no longer used
   }
 }
-void addToStdev(stdevS &data, value) { // adds an integer value to the summary statistics
+void addToStdev(stdevS &data, int value) { // adds an integer value to the summary statistics
   if (data.count >= 500) {
     data.doStdev = false;
     return;
@@ -229,7 +229,7 @@ void resetStdev (stdevS &data) { // resets the summary statistics
   data.sumSq = 0;
   data.doStdev = true;
 }
-void calcStdev(stdevS &data) {
+void calcStdev(stdevS &data) { // updates calculation for standard deviation
   if (data.count > 500) return;
 
   double mean       = (double) data.sum   / (data.count); // calc summary statistics

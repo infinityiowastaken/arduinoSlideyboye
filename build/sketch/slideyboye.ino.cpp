@@ -28,7 +28,7 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
-#define buttonDebounce  150 // time between accepted readings
+#define buttonDebounce  250 // time between accepted readings
 #define changeDebounce  150 // time for rotation in different directions
 #define   turnDebounce   13 // time for multiple rotations in same direction
 
@@ -62,10 +62,17 @@ struct slideS {
       1     previous
   */
 };
+struct stdevS {
+  bool doStdev;
+  int  count; // number of items in sample
+  int  stdev; // working standard deviation in sample
+  long sum;   // sum of all sample elements
+  long sumSq; // sum of squares of all sample elements
+};
 
 timingsS timings;
 slideS slide;
-
+stdevS stdev;
 // char last[12]; // no longer in use
 /*
   last[] array stores last operations performed:
@@ -75,17 +82,14 @@ slideS slide;
 
 int delta, rotation, fillBut, fillBut2, mode;
 
-int  count, stdev; // debug modes for calculating stdev of slider
-long sum, sumSq;
-
-bool updateRot, lastDir, doStdev, hideLed, hideDisp;
+bool updateRot, lastDir, hideLed, hideDisp;
 
 SSD1306AsciiAvrI2c oled;
 CRGB leds[1];
 
-#line 83 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 87 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup();
-#line 109 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 113 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void loop();
 #line 10 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void readButtons(timingsS &timings, int &mode);
@@ -96,28 +100,28 @@ void readRotate();
 #line 155 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void showDebug();
 #line 214 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-void addToStdev(int value, int &count, long &sum, long &sumSq);
+void addToStdev(stdevS &data, int value);
 #line 226 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-void resetStdev(int &count, long &sum, long &sumSq);
+void resetStdev(stdevS &data);
 #line 232 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
-void calcStdev(int &count, long &sum, long &sumSq, int &stdev);
-#line 249 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+void calcStdev(stdevS &data);
+#line 250 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void fullRefresh(int mode, int value, int position, int rotation);
-#line 255 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 256 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispMode(int mode);
-#line 301 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 302 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispSlide(int value, int position, int mode);
-#line 319 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 320 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispEncod(int value);
-#line 326 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 327 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispInd(int mode);
-#line 335 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 336 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1);
-#line 369 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 370 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int calib(int input);
-#line 380 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 381 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int smooth(int values[4]);
-#line 83 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
+#line 87 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup() {
   // Serial.begin(9600);              // init serial at 9600bps, no longer used as tx pin in use
 
@@ -193,7 +197,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
       delay(17);
       Keyboard.releaseAll();
     }
-    else if (mode == -1) resetStdev(count, sum, sumSq);
+    else if (mode == -1) resetStdev(stdev);
 
     log(47); // log o
     fillBut = 5; // on screen button animation
@@ -345,15 +349,15 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   else if (rotation == 0)       oled.print(" ");
   oled.print(rotation);
 
-  if (doStdev) {
-    addToStdev(slide.position[0], count, sum, sumSq);
-    calcStdev(count, sum, sumSq, stdev);
+  if (stdev.doStdev) {
+    addToStdev(stdev, slide.position[0]);
+    calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(stdev);
+    oled.print(stdev.stdev);
     oled.print(".");
-    if (stdev % 100 < 10) oled.print("0");
-    oled.print(stdev % 100);
+    if (stdev.stdev % 100 < 10) oled.print("0");
+    oled.print(stdev.stdev % 100);
   }
   
   oled.setCursor(61, 3);
@@ -372,34 +376,35 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   // oled.println(last); // no longer used
   }
 }
-void addToStdev(int value, int &count, long &sum, long &sumSq) { // adds an integer value to the summary statistics
-  if (count >= 500) {
-    doStdev = false;
+void addToStdev(stdevS &data, int value) { // adds an integer value to the summary statistics
+  if (data.count >= 500) {
+    data.doStdev = false;
     return;
   };
-  count ++;
-  sum += value;
-  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
+  data.count ++;
+  data.sum += value;
+  data.sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
                           // count > 2000, in which case an online algorithm may be needed
                           // for efficiency, but 2k samples should be more than enough for 
                           // anything i can think of where stdev could be used
 }
-void resetStdev (int &count, long &sum, long &sumSq) { // resets the summary statistics
-  count = 0;
-  sum = 0;
-  sumSq = 0;
-  doStdev = true;
+void resetStdev (stdevS &data) { // resets the summary statistics
+  data.count = 0;
+  data.sum = 0;
+  data.sumSq = 0;
+  data.doStdev = true;
 }
-void calcStdev(int &count, long &sum, long &sumSq, int &stdev) {
-  if (count > 500) return;
+void calcStdev(stdevS &data) { // updates calculation for standard deviation
+  if (data.count > 500) return;
 
-  double mean       = (double) sum   / (count); // calc summary statistics
-  double meansq     = (double) sumSq / (count); // calc summary statistics
+  double mean       = (double) data.sum   / (data.count); // calc summary statistics
+  double meansq     = (double) data.sumSq / (data.count); // calc summary statistics
 
   double variance   = (double) meansq - (pow(mean, 2));        // var = mean of sqares - square of means
-  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
+  double u_variance = (double) variance * data.count / (data.count - 1); // correction for sample var vs real var
   double u_stdev    = (double) sqrt(u_variance);
-  stdev = round(u_stdev * 100);
+
+  data.stdev = round(u_stdev * 100);
 }
 /* void log(int action) {
   memmove(&last[1], &last[0], (11) * sizeof(char));

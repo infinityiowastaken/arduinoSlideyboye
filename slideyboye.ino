@@ -25,7 +25,7 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
-#define buttonDebounce  150 // time between accepted readings
+#define buttonDebounce  250 // time between accepted readings
 #define changeDebounce  150 // time for rotation in different directions
 #define   turnDebounce   13 // time for multiple rotations in same direction
 
