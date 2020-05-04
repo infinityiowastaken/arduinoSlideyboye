@@ -11,7 +11,7 @@ struct timingsS {
   uint32_t start; // set at start of cycle
   uint32_t readings; // set after slider/buttons are read
   uint32_t debug; // set at start of debug print
-  unsigned int debounce[4]; // set by all functions that require a debounce
+  uint32_t debounce[4]; // set by all functions that require a debounce
   /*
 
     debounce[] array stores the last time functions were triggered such that async 
@@ -28,7 +28,7 @@ struct timingsS {
 struct slideS {
   int reading[4];
   int position[3];
-  byte value[2];
+  int value[2];
   byte fancyPosition;
   /*
 
@@ -121,6 +121,7 @@ void loop() {
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
   if (mode == -1) showDebug();
+  dispInd(mode);
 
   delay(1); // allows uploads to happen without resets
 }
@@ -141,7 +142,7 @@ void loop() {
 void readButtons(timingsS &timings, int &mode) { // button reading
   // button 0 is on the encoder, button 1 is centre, button 2 is far left
 
-  if (digitalRead(6) == 0x0 && millis() - timings.debounce[0] > 250 /* time between accepted readings*/) {
+  if (digitalRead(6) == 0x0 && millis() - timings.debounce[0] > 300 /* time between accepted readings*/) {
     timings.debounce[0] = millis(); // ratelimit/debounce for mode change
 
     if (mode < 2) mode ++;
@@ -151,7 +152,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     else dispMode(mode);
   } // button 0 changes the mode
 
-  if (digitalRead(5) == 0x0 && millis() - timings.debounce[1] > 250 /* time between accepted readings*/) {
+  if (digitalRead(5) == 0x0 && millis() - timings.debounce[1] > 300 /* time between accepted readings*/) {
     timings.debounce[1] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_F24);
@@ -169,7 +170,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     fillBut = 5; // on screen button animation
   } // button 1 performs an operation based upon the mode
 
-  if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 250 /* time between accepted readings*/) {
+  if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 300 /* time between accepted readings*/) {
     timings.debounce[2] = millis(); // ratelimit/debounce for mode change
 
     if (mode == 0) Keyboard.write(KEY_MUTE);
@@ -231,7 +232,7 @@ void readSlide(slideS &slide, int mode) { // slider reading
         if (1 /* shows timings (and last instructions) as a mode*/) log(45); // log '-'
       }
     }
-    if (slide.fancyPosition < 0 || slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
+    if (slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
       slide.fancyPosition = 2 * (((float) slide.position[0] * 0.09765625 * 0.5)>=0?(long)(((float) slide.position[0] * 0.09765625 * 0.5)+0.5):(long)(((float) slide.position[0] * 0.09765625 * 0.5)-0.5));
     }
 
@@ -298,21 +299,22 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   oled.setFont(Adafruit5x7);
 
   oled.setCursor(61,0);
+  oled.clearToEOL();
+  if (slide.position[1] < 1000) oled.print(" ");
+  if (slide.position[1] < 100) oled.print(" ");
   if (slide.position[1] < 10) oled.print(" ");
-  else if (slide.position[1] < 100) oled.print(" ");
-  else if (slide.position[1] < 1000) oled.print(" ");
   oled.print(slide.position[1]);
   oled.print(" / ");
+  if (slide.position[0] < 1000) oled.print(" ");
+  if (slide.position[0] < 100) oled.print(" ");
   if (slide.position[0] < 10) oled.print(" ");
-  else if (slide.position[0] < 100) oled.print(" ");
-  else if (slide.position[0] < 1000) oled.print(" ");
   oled.print(slide.position[0]);
 
-  oled.setCursor(109,1);
+  oled.setCursor(103,1);
   if (((rotation)>0?(rotation):-(rotation)) < 10) oled.print(" ");
-  else if (((rotation)>0?(rotation):-(rotation)) < 100) oled.print(" ");
+  if (((rotation)>0?(rotation):-(rotation)) < 100) oled.print(" ");
   if (rotation > 0) oled.print("+");
-  else if (rotation == 0) oled.print(" ");
+  if (rotation == 0) oled.print(" ");
   oled.print(rotation);
 
   if (stdev.doStdev) {
@@ -320,7 +322,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(stdev.stdev);
+    oled.print(stdev.stdev / 100);
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);
@@ -379,7 +381,7 @@ void calcStdev(stdevS &data) { // updates calculation for standard deviation
   last[0] = action;
 
 } */
-# 247 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 248 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
      // no longer in use
 
 // things involving the display
@@ -463,25 +465,25 @@ void dispEncod(int value) {
 void dispInd(int mode) {
   if (mode == -1 && !hideLed) {
     
-# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<0);
     
-# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<5);
   } else {
     
-# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<0);
     
-# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<5);
   }
 }

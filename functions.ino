@@ -100,19 +100,19 @@ void readSlide(slideS &slide, int mode) { // slider reading
         if (doDebug) log(45); // log '-'
       }
     }
-    if (slide.fancyPosition < 0 || slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
+    if (slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
       slide.fancyPosition = 2 * round( (float) slide.position[0] * 0.09765625 * 0.5 );
     }
 
     dispSlide(slide.position[0], slide.fancyPosition, mode); // display slider on screen
 
     slide.position[2] = slide.position[0]; // set previous position
-    slide.value[1]    = slide.value[0];    // set previous value
+    slide.value[1] = slide.value[0];       // set previous value
   }
 }
 void readRotate() { // encoder reading, interrupt-called function
   uint32_t t = millis();
-  if (t - timings.debounce[3] > turnDebounce) { // 13ms debounce on input, 76hz max speed
+  if (t - timings.debounce[3] > turningDebounce) { // 13ms debounce on input, 76hz max speed
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
       if (lastDir || !lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation++;
@@ -167,21 +167,22 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   oled.setFont(Adafruit5x7);
 
   oled.setCursor(61,0);
-  if      (slide.position[1] < 10)   oled.print(" ");
-  else if (slide.position[1] < 100)  oled.print(" ");
-  else if (slide.position[1] < 1000) oled.print(" ");
+  oled.clearToEOL();
+  if (slide.position[1] < 1000) oled.print(" ");
+  if (slide.position[1] < 100)  oled.print(" ");
+  if (slide.position[1] < 10)   oled.print(" ");
   oled.print(slide.position[1]);
   oled.print(" / ");
-  if      (slide.position[0] < 10)   oled.print(" ");
-  else if (slide.position[0] < 100)  oled.print(" ");
-  else if (slide.position[0] < 1000) oled.print(" ");
+  if (slide.position[0] < 1000) oled.print(" ");
+  if (slide.position[0] < 100)  oled.print(" ");
+  if (slide.position[0] < 10)   oled.print(" ");
   oled.print(slide.position[0]);
 
-  oled.setCursor(109,1);
-  if      (abs(rotation) < 10)  oled.print(" ");
-  else if (abs(rotation) < 100) oled.print(" ");
-  if      (rotation > 0)        oled.print("+");
-  else if (rotation == 0)       oled.print(" ");
+  oled.setCursor(103,1);
+  if (abs(rotation) < 10)  oled.print(" ");
+  if (abs(rotation) < 100) oled.print(" ");
+  if (rotation > 0)        oled.print("+");
+  if (rotation == 0)       oled.print(" ");
   oled.print(rotation);
 
   if (stdev.doStdev) {
@@ -189,7 +190,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(stdev.stdev);
+    oled.print(stdev.stdev / 100);
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);

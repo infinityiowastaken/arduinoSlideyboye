@@ -28,15 +28,15 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
-#define buttonDebounce  250 // time between accepted readings
+#define buttonDebounce  300 // time between accepted readings
 #define changeDebounce  150 // time for rotation in different directions
-#define   turnDebounce   13 // time for multiple rotations in same direction
+#define turningDebounce  13 // time for multiple rotations in same direction
 
 struct timingsS {
   uint32_t start;       // set at start of cycle
   uint32_t readings;    // set after slider/buttons are read
   uint32_t debug;       // set at start of debug print
-  unsigned int debounce[4]; // set by all functions that require a debounce
+  uint32_t debounce[4]; // set by all functions that require a debounce
   /*
     debounce[] array stores the last time functions were triggered such that async 
     debouncing can be done for when they are triggered
@@ -47,7 +47,7 @@ struct timingsS {
 struct slideS {
   int reading[4];
   int position[3];
-  byte value[2];
+  int value[2];
   byte fancyPosition;
   /*
     reading[] array stores last 4 raw readings of the slider:
@@ -99,27 +99,27 @@ void readSlide(slideS &slide, int mode);
 void readRotate();
 #line 155 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void showDebug();
-#line 214 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 215 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void addToStdev(stdevS &data, int value);
-#line 226 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 227 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void resetStdev(stdevS &data);
-#line 232 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 233 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void calcStdev(stdevS &data);
-#line 250 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 251 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void fullRefresh(int mode, int value, int position, int rotation);
-#line 256 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 257 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispMode(int mode);
-#line 302 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 303 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispSlide(int value, int position, int mode);
-#line 320 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 321 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispEncod(int value);
-#line 327 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 328 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispInd(int mode);
-#line 336 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 337 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1);
-#line 370 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 371 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int calib(int input);
-#line 381 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 382 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int smooth(int values[4]);
 #line 87 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup() {
@@ -159,6 +159,7 @@ void loop() {
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
   if (mode == -1) showDebug();
+  dispInd(mode);
 
   delay(1); // allows uploads to happen without resets
 }
@@ -265,19 +266,19 @@ void readSlide(slideS &slide, int mode) { // slider reading
         if (doDebug) log(45); // log '-'
       }
     }
-    if (slide.fancyPosition < 0 || slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
+    if (slide.fancyPosition > 100) { // if percentage outside bounds, remake the value
       slide.fancyPosition = 2 * round( (float) slide.position[0] * 0.09765625 * 0.5 );
     }
 
     dispSlide(slide.position[0], slide.fancyPosition, mode); // display slider on screen
 
     slide.position[2] = slide.position[0]; // set previous position
-    slide.value[1]    = slide.value[0];    // set previous value
+    slide.value[1] = slide.value[0];       // set previous value
   }
 }
 void readRotate() { // encoder reading, interrupt-called function
   uint32_t t = millis();
-  if (t - timings.debounce[3] > turnDebounce) { // 13ms debounce on input, 76hz max speed
+  if (t - timings.debounce[3] > turningDebounce) { // 13ms debounce on input, 76hz max speed
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
       if (lastDir || !lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation++;
@@ -332,21 +333,22 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
   oled.setFont(Adafruit5x7);
 
   oled.setCursor(61,0);
-  if      (slide.position[1] < 10)   oled.print(" ");
-  else if (slide.position[1] < 100)  oled.print(" ");
-  else if (slide.position[1] < 1000) oled.print(" ");
+  oled.clearToEOL();
+  if (slide.position[1] < 1000) oled.print(" ");
+  if (slide.position[1] < 100)  oled.print(" ");
+  if (slide.position[1] < 10)   oled.print(" ");
   oled.print(slide.position[1]);
   oled.print(" / ");
-  if      (slide.position[0] < 10)   oled.print(" ");
-  else if (slide.position[0] < 100)  oled.print(" ");
-  else if (slide.position[0] < 1000) oled.print(" ");
+  if (slide.position[0] < 1000) oled.print(" ");
+  if (slide.position[0] < 100)  oled.print(" ");
+  if (slide.position[0] < 10)   oled.print(" ");
   oled.print(slide.position[0]);
 
-  oled.setCursor(109,1);
-  if      (abs(rotation) < 10)  oled.print(" ");
-  else if (abs(rotation) < 100) oled.print(" ");
-  if      (rotation > 0)        oled.print("+");
-  else if (rotation == 0)       oled.print(" ");
+  oled.setCursor(103,1);
+  if (abs(rotation) < 10)  oled.print(" ");
+  if (abs(rotation) < 100) oled.print(" ");
+  if (rotation > 0)        oled.print("+");
+  if (rotation == 0)       oled.print(" ");
   oled.print(rotation);
 
   if (stdev.doStdev) {
@@ -354,7 +356,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     calcStdev(stdev);
     oled.setCursor(79,2);
     oled.print("sd: ");
-    oled.print(stdev.stdev);
+    oled.print(stdev.stdev / 100);
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);

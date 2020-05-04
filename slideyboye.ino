@@ -25,15 +25,15 @@
 #define numLeds 30
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
-#define buttonDebounce  250 // time between accepted readings
+#define buttonDebounce  300 // time between accepted readings
 #define changeDebounce  150 // time for rotation in different directions
-#define   turnDebounce   13 // time for multiple rotations in same direction
+#define turningDebounce  13 // time for multiple rotations in same direction
 
 struct timingsS {
   uint32_t start;       // set at start of cycle
   uint32_t readings;    // set after slider/buttons are read
   uint32_t debug;       // set at start of debug print
-  unsigned int debounce[4]; // set by all functions that require a debounce
+  uint32_t debounce[4]; // set by all functions that require a debounce
   /*
     debounce[] array stores the last time functions were triggered such that async 
     debouncing can be done for when they are triggered
@@ -44,7 +44,7 @@ struct timingsS {
 struct slideS {
   int reading[4];
   int position[3];
-  byte value[2];
+  int value[2];
   byte fancyPosition;
   /*
     reading[] array stores last 4 raw readings of the slider:
@@ -121,6 +121,7 @@ void loop() {
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
   if (mode == -1) showDebug();
+  dispInd(mode);
 
   delay(1); // allows uploads to happen without resets
 }
