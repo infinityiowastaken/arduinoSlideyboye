@@ -4,8 +4,7 @@
 /*
   my basic rules for encapsulating functions:
   - functions can read from gpio internally
-  - functions can set and read from arrays, although they have to be passed to the functions
-  - functions cannot change
+  - functions can set and read from structures, although they have to be passed to the functions
 */
 
 void readButtons(timingsS &timings, int &mode) { // button reading
@@ -67,11 +66,11 @@ void readButtons(timingsS &timings, int &mode) { // button reading
     fillBut2 = 5;
   } // button 2 performs an operation based upon the mode
 }
-void readSlide(slideS &slide, int mode) {   // slider reading
+void readSlide(slideS &slide, int mode) {        // slider reading
   for (int i = 2; i >= 0; i--) slide.reading[i + 1] = slide.reading[i]; // move last 3 values back in memory
   slide.reading[0] = analogRead(slider);                       // update most recent value
 
-  slide.position[1] = (2 * slide.reading[0] + slide.reading[1] + slide.reading[2] + slide.reading[3]) / 5; // create smoothed (weighted) value based off of last 4 inputs
+  slide.position[1] = smooth(slide.reading);
   slide.position[0] = calib(slide.position[1]);                                     // apply correction to smoothed value
   slide.value[0] = round(((float) 512 - slide.position[0]) / divisor);           // turn smoothed value into one of 51 positions
 
@@ -111,7 +110,7 @@ void readSlide(slideS &slide, int mode) {   // slider reading
     slide.value[1]    = slide.value[0];    // set previous value
   }
 }
-void readRotate() {  // encoder reading
+void readRotate() { // encoder reading, interrupt function
   uint32_t t = millis();
   if (t - timings.debounce[3] > 13) { // 13ms debounce on input, 76hz max speed
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
@@ -152,7 +151,8 @@ void readRotate() {  // encoder reading
   } 
 }
 
-void showDebug() {
+// things related to debug mode
+void showDebug() { // if doDebug is one, mode -1 can be selected, which will run this each loop
   timings.debug = millis();
 
   if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 3 / 16) + 64);
@@ -210,7 +210,42 @@ void showDebug() {
   // oled.println(last);
   }
 }
+void addToStdev(int value) {
+  if (count >= 500) {
+    doStdev = false;
+    return;
+  };
+  count ++;
+  sum += value;
+  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
+                          // count > 2000, in which case an online algo may be needed, but
+                          // 500 samples should be more than enough for anything i can thi
+                          // -nk of where stdev is needed
+}
+void resetStdev () {
+  count = 0;
+  sum = 0;
+  sumSq = 0;
+  doStdev = true;
+}
+int calcStdev() {
+  if (count > 500) return stdev;
+  double mean       = (double) sum   / (count); // calc summary statistics
+  double meansq     = (double) sumSq / (count); // calc summary statistics
 
+  double variance   = (double) meansq - (pow(mean, 2));        // var = mean of sqares - square of means
+  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
+  double u_stdev    = (double) sqrt(u_variance);
+  stdev = round(u_stdev * 100);
+
+  return stdev;
+}
+/* void log(int action) {
+  memmove(&last[1], &last[0], (11) * sizeof(char));
+  last[0] = action;
+} */ // no longer in use
+
+// things involving the display
 void fullRefresh(int mode, int value, int position, int rotation) {
   oled.clear();
   dispMode(mode);
@@ -330,6 +365,7 @@ void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1) {
   }
 }
 
+// things involving improving inputs
 int calib(int input) {
   if (input < 64) {
     return input*4;
@@ -341,39 +377,10 @@ int calib(int input) {
     return round((float) (input * 3.54) - 2598.4);
   }
 }
-
-void addToStdev(int value) {
-  if (count >= 500) {
-    doStdev = false;
-    return;
-  };
-  count ++;
-  sum += value;
-  sumSq += pow(value, 2); // sumSq is a long so this shouldn't pose too many issues unless 
-                          // count > 2000, in which case an online algo may be needed, but
-                          // 500 samples should be more than enough for anything i can thi
-                          // -nk of where stdev is needed
-}
-void resetStdev () {
-  count = 0;
-  sum = 0;
-  sumSq = 0;
-  doStdev = true;
-}
-int calcStdev() {
-  if (count > 500) return stdev;
-  double mean       = (double) sum   / (count); // calc summary statistics
-  double meansq     = (double) sumSq / (count); // calc summary statistics
-
-  double variance   = (double) meansq - (pow(mean, 2));        // var = mean of sqares - square of means
-  double u_variance = (double) variance * count / (count - 1); // correction for sample var vs real var
-  double u_stdev    = (double) sqrt(u_variance);
-  stdev = round(u_stdev * 100);
-
-  return stdev;
+int smooth(int values[4]) {
+  return (2 * values[0] + values[1] + values[2] + values[3]) / 5; 
+  // create smoothed (weighted) value based off of last 4 inputs
 }
 
-// void log(int action) {
-//   memmove(&last[1], &last[0], (11) * sizeof(char));
-//   last[0] = action;
-// } // no longer in use
+
+

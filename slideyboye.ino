@@ -26,10 +26,10 @@
 #define bright 127 // limits for ext. led strip as max brightness is not possible
 
 struct timingsS {
-  uint32_t start;       // set at start of cycle
-  uint32_t readings;    // set after slider/buttons are read
-  uint32_t debounce[4]; // set by all functions that require a debounce
-  uint32_t debug;       // set at start of debug print
+  unsigned int start;       // set at start of cycle
+  unsigned int readings;    // set after slider/buttons are read
+  unsigned int debounce[4]; // set by all functions that require a debounce
+  unsigned int debug;       // set at start of debug print
 };
 struct slideS {
   int reading[4];
@@ -60,7 +60,7 @@ last[] array stores last operations performed:
   15 least recent value 
 */
 
-int delta, rotation, fillBut, fillBut2, mode, unsmoothed;
+int delta, rotation, fillBut, fillBut2, mode;
 
 int  count, stdev; // debug modes for calculating stdev of slider
 long sum, sumSq;
