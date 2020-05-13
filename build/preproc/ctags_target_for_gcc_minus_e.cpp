@@ -173,7 +173,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
   if (digitalRead(4) == 0x0 && millis() - timings.debounce[2] > 300 /* time between accepted readings*/) {
     timings.debounce[2] = millis(); // ratelimit/debounce for mode change
 
-    if (mode == 0) Keyboard.write(KEY_MUTE);
+    if (mode == 0) Keyboard.write(KEY_F21);
     else if (mode == 1) {
       Keyboard.write(KEY_UP);
       delay(17);
@@ -421,7 +421,7 @@ void dispMode(int mode) {
   // button 2
   oled.setCursor(10,3);
   oled.clearToEOL();
-  if (mode == 0) oled.print("Mute");
+  if (mode == 0) oled.print("Input");
   else if (mode == 1) oled.print("Reset");
   else if (mode == 2) oled.print("Replace");
 

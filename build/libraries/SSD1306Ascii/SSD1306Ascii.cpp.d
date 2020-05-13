@@ -55,6 +55,8 @@ c:\Users\nmail\Documents\Arduino\slideyboye\build\libraries\SSD1306Ascii\SSD1306
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/lineboye2.h \
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/arrows.h \
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/circle.h \
+ C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/consolas.h \
+ C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/consolas_31.h \
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/fixednums7x15.h \
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/fixednums8x16.h \
  C:\Users\nmail\Documents\Arduino\libraries\SSD1306Ascii\src\fonts/fixednums15x31.h \
