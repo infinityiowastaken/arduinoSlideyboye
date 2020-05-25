@@ -208,8 +208,8 @@ void readSlide(slideS &slide, int mode) { // slider reading
 
   delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
-  if (((slide.position[2] - slide.position[0])>0?(slide.position[2] - slide.position[0]):-(slide.position[2] - slide.position[0])) < 20 /* gives 51.2 steps across 0-1023 range*/ + 5) delta = 0; // slight hysteresis to reduce jitter - only allows changes 
-                                                                              // if last two values have significant change between them
+  if (((slide.position[2] - slide.position[0])>0?(slide.position[2] - slide.position[0]):-(slide.position[2] - slide.position[0])) < 20) delta = 0; // slight hysteresis to reduce jitter - only allows changes 
+                                                                       // if last two values have significant change between them
 
   if (delta != 0) {
     for (int i = 0; i < ((delta)>0?(delta):-(delta)); i++) {
@@ -300,10 +300,10 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
 
   oled.setCursor(61,0);
   oled.clearToEOL();
-  if (slide.position[1] < 1000) oled.print(" ");
-  if (slide.position[1] < 100) oled.print(" ");
-  if (slide.position[1] < 10) oled.print(" ");
-  oled.print(slide.position[1]);
+  if (slide.reading[0] < 1000) oled.print(" ");
+  if (slide.reading[0] < 100) oled.print(" ");
+  if (slide.reading[0] < 10) oled.print(" ");
+  oled.print(slide.reading[0]);
   oled.print(" / ");
   if (slide.position[0] < 1000) oled.print(" ");
   if (slide.position[0] < 100) oled.print(" ");
@@ -326,6 +326,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);
+    oled.print(" ");
   }
 
   oled.setCursor(61, 3);
@@ -381,7 +382,7 @@ void calcStdev(stdevS &data) { // updates calculation for standard deviation
   last[0] = action;
 
 } */
-# 248 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 249 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
      // no longer in use
 
 // things involving the display
@@ -465,25 +466,25 @@ void dispEncod(int value) {
 void dispInd(int mode) {
   if (mode == -1 && !hideLed) {
     
-# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 330 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<0);
     
-# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 331 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 332 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    &= ~(1<<5);
   } else {
     
-# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x05) + 0x20)) 
-# 333 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<0);
     
-# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
+# 335 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino" 3
    (*(volatile uint8_t *)((0x0B) + 0x20)) 
-# 334 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+# 335 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
    |= (1<<5);
   }
 }
@@ -533,6 +534,10 @@ int calib(int input) {
   }
 }
 int smooth(int values[4]) {
-  return (2 * values[0] + values[1] + values[2] + values[3]) / 5;
-  // create smoothed (weighted) value based off of last 4 inputs
-}
+  if (((1024 - values[0] - values[1])>0?(1024 - values[0] - values[1]):-(1024 - values[0] - values[1])) < 200) {
+    return (2 * values[0] + values[1] + values[2] + values[3]) / 5;
+  }
+  else {
+    return (values[0] + values[1] + values[2] + values[3]) / 4;
+  }
+} // create smoothed (weighted) value based off of last 4 inputs

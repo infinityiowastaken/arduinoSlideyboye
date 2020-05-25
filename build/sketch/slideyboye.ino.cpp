@@ -99,27 +99,27 @@ void readSlide(slideS &slide, int mode);
 void readRotate();
 #line 155 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void showDebug();
-#line 215 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 216 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void addToStdev(stdevS &data, int value);
-#line 227 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 228 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void resetStdev(stdevS &data);
-#line 233 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 234 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void calcStdev(stdevS &data);
-#line 251 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 252 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void fullRefresh(int mode, int value, int position, int rotation);
-#line 257 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 258 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispMode(int mode);
-#line 303 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 304 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispSlide(int value, int position, int mode);
-#line 321 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 322 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispEncod(int value);
-#line 328 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 329 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void dispInd(int mode);
-#line 337 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 338 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1);
-#line 371 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 372 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int calib(int input);
-#line 382 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
+#line 383 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\functions.ino"
 int smooth(int values[4]);
 #line 87 "c:\\Users\\nmail\\Documents\\Arduino\\slideyboye\\slideyboye.ino"
 void setup() {
@@ -242,8 +242,8 @@ void readSlide(slideS &slide, int mode) { // slider reading
 
   delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
-  if (abs(slide.position[2] - slide.position[0]) < divisor + 5) delta = 0;    // slight hysteresis to reduce jitter - only allows changes 
-                                                                              // if last two values have significant change between them
+  if (abs(slide.position[2] - slide.position[0]) < 20) delta = 0;      // slight hysteresis to reduce jitter - only allows changes 
+                                                                       // if last two values have significant change between them
 
   if (delta != 0) {
     for (int i = 0; i < abs(delta); i++) {
@@ -334,10 +334,10 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
 
   oled.setCursor(61,0);
   oled.clearToEOL();
-  if (slide.position[1] < 1000) oled.print(" ");
-  if (slide.position[1] < 100)  oled.print(" ");
-  if (slide.position[1] < 10)   oled.print(" ");
-  oled.print(slide.position[1]);
+  if (slide.reading[0] < 1000) oled.print(" ");
+  if (slide.reading[0] < 100)  oled.print(" ");
+  if (slide.reading[0] < 10)   oled.print(" ");
+  oled.print(slide.reading[0]);
   oled.print(" / ");
   if (slide.position[0] < 1000) oled.print(" ");
   if (slide.position[0] < 100)  oled.print(" ");
@@ -360,6 +360,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);
+    oled.print(" ");
   }
   
   oled.setCursor(61, 3);
@@ -546,10 +547,10 @@ int calib(int input) {
   }
 }
 int smooth(int values[4]) {
-  return (2 * values[0] + values[1] + values[2] + values[3]) / 5; 
-  // create smoothed (weighted) value based off of last 4 inputs
-}
-
-
-
-
+  if (abs(1024 - values[0] - values[1]) < 200) {
+    return (2 * values[0] + values[1] + values[2] + values[3]) / 5; 
+  }
+  else {
+    return (values[0] + values[1] + values[2] + values[3]) / 4;
+  }
+} // create smoothed (weighted) value based off of last 4 inputs

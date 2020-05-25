@@ -57,9 +57,8 @@ void readButtons(timingsS &timings, int &mode) { // button reading
       Keyboard.releaseAll();
     } 
     else if (mode == -1) {
+      hideLed = !hideLed;
       hideDisp = !hideDisp;
-      hideLed  = !hideLed;
-      oled.clear();
     }
 
     log(48);
@@ -76,8 +75,8 @@ void readSlide(slideS &slide, int mode) { // slider reading
 
   delta = slide.value[1] - slide.value[0]; // work out change in values over last cycle
 
-  if (abs(slide.position[2] - slide.position[0]) < divisor + 5) delta = 0;    // slight hysteresis to reduce jitter - only allows changes 
-                                                                              // if last two values have significant change between them
+  if (abs(slide.position[2] - slide.position[0]) < 22) delta = 0;      // slight hysteresis to reduce jitter - only allows changes 
+                                                                       // if last two values have significant change between them
 
   if (delta != 0) {
     for (int i = 0; i < abs(delta); i++) {
@@ -106,8 +105,9 @@ void readSlide(slideS &slide, int mode) { // slider reading
 
     dispSlide(slide.position[0], slide.fancyPosition, mode); // display slider on screen
 
-    slide.position[2] = slide.position[0]; // set previous position
-    slide.value[1] = slide.value[0];       // set previous value
+    timings.debounce[4] = millis();          // its not like i'm even using this value to debounce but heyyy its all fine right
+    slide.position[2]   = slide.position[0]; // set previous position
+    slide.value[1]      = slide.value[0];    // set previous value
   }
 }
 void readRotate() { // encoder reading, interrupt-called function
@@ -168,10 +168,10 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
 
   oled.setCursor(61,0);
   oled.clearToEOL();
-  if (slide.position[1] < 1000) oled.print(" ");
-  if (slide.position[1] < 100)  oled.print(" ");
-  if (slide.position[1] < 10)   oled.print(" ");
-  oled.print(slide.position[1]);
+  if (slide.reading[0] < 1000) oled.print(" ");
+  if (slide.reading[0] < 100)  oled.print(" ");
+  if (slide.reading[0] < 10)   oled.print(" ");
+  oled.print(slide.reading[0]);
   oled.print(" / ");
   if (slide.position[0] < 1000) oled.print(" ");
   if (slide.position[0] < 100)  oled.print(" ");
@@ -194,6 +194,7 @@ void showDebug() { // if doDebug is one, mode -1 can be selected, which will run
     oled.print(".");
     if (stdev.stdev % 100 < 10) oled.print("0");
     oled.print(stdev.stdev % 100);
+    oled.print(" ");
   }
   
   oled.setCursor(61, 3);
@@ -335,6 +336,8 @@ void dispInd(int mode) {
   }
 }
 void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1) {
+  if (hideDisp) return;
+
   if (updateRot && mode != -1) {
     dispEncod(rotation);
     updateRot = false;
@@ -368,7 +371,7 @@ void doUpdates(int mode, bool &updateRot, int &countdown0, int &countdown1) {
 }
 
 // things involving improving inputs
-int calib(int input) {
+int calib(int input) { // turns weird s curve value into less weird linear value
   if (input < 64) {
     return input*4;
   }
@@ -379,10 +382,11 @@ int calib(int input) {
     return round((float) (input * 3.54) - 2598.4);
   }
 }
-int smooth(int values[4]) {
-  return (2 * values[0] + values[1] + values[2] + values[3]) / 5; 
-  // create smoothed (weighted) value based off of last 4 inputs
+int smooth(int values[4]) { // create smoothed (weighted) value based off of last 4 inputs
+  if (abs(1024 - values[0] - values[1]) < 200) {
+    return (2 * values[0] + values[1] + values[2] + values[3]) / 5; 
+  }
+  else {
+    return (values[0] + values[1] + values[2] + values[3]) / 4;
+  }
 }
-
-
-

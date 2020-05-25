@@ -33,12 +33,14 @@ struct timingsS {
   uint32_t start;       // set at start of cycle
   uint32_t readings;    // set after slider/buttons are read
   uint32_t debug;       // set at start of debug print
-  uint32_t debounce[4]; // set by all functions that require a debounce
+  uint32_t lastChange;  // set when any variable changes significantly
+  uint32_t debounce[5]; // set by all functions that require a debounce
   /*
     debounce[] array stores the last time functions were triggered such that async 
     debouncing can be done for when they are triggered
       0 - 2 store the values for button0 through button2
       3     stores the value for the encoder
+      4     stores the value for the slider (why? because it makes my life easy)
   */ 
 };
 struct slideS {
@@ -79,7 +81,7 @@ stdevS stdev;
 
 int delta, rotation, fillBut, fillBut2, mode;
 
-bool updateRot, lastDir, hideLed, hideDisp;
+bool updateRot, lastDir, hideLed, hideDisp, doTimeout = true, hidden;
 
 SSD1306AsciiAvrI2c oled;
 CRGB leds[1];
@@ -111,17 +113,33 @@ void setup() {
 }
 
 void loop() {
+  timings.lastChange = max(max(max(timings.debounce[0], timings.debounce[1]), timings.debounce[2]),  max(timings.debounce[3], timings.debounce[4]));
   timings.start = millis();
-  
+
   readButtons(timings, mode); // button readings
-  readSlide(slide, mode);   // slider readings
+  readSlide(slide, mode);     // slider readings
   
   timings.readings = millis();
 
   doUpdates(mode, updateRot, fillBut, fillBut2);
 
   if (mode == -1) showDebug();
-  dispInd(mode);
+  if (!hideDisp)  dispInd(mode);
+
+  if (timings.start - timings.lastChange > 360000 && doTimeout) { // timeout because light is annoying
+    hideDisp = true;
+    hideLed  = true;
+
+    if (!hidden) oled.clear();
+    if (!hidden) leds[0] = CRGB::Black;
+    hidden = true;
+  } else {
+    hideDisp = false;
+    hideLed  = false;
+
+    if (hidden) fullRefresh(mode, slide.position[0], slide.fancyPosition, rotation); 
+    hidden = false;
+  }
 
   delay(1); // allows uploads to happen without resets
 }
