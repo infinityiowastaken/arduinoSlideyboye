@@ -13,7 +13,7 @@ void readButtons(timingsS &timings, int &mode) { // button reading
   if (digitalRead(button0) == LOW && millis() - timings.debounce[0] > buttonDebounce) {
     timings.debounce[0] = millis();         // ratelimit/debounce for mode change
 
-    if (mode < 2)   mode ++;
+    if (mode < 3)   mode ++;
     else            mode = -1 * doDebug;
     
     if (mode == 0)  fullRefresh(mode, slide.position[0], slide.fancyPosition, rotation); // fix for minor debug issue
@@ -23,15 +23,16 @@ void readButtons(timingsS &timings, int &mode) { // button reading
   if (digitalRead(button1) == LOW && millis() - timings.debounce[1] > buttonDebounce) {
     timings.debounce[1] = millis();    // ratelimit/debounce for mode change
 
-    if      (mode == 0) Keyboard.write(KEY_F24);
-    else if (mode == 1) Keyboard.write(KEY_DOWN);
+    if      (mode == 0) BootKeyboard.write(KEY_F24);
+    else if (mode == 1) BootKeyboard.write(KEY_DOWN);
     else if (mode == 2) {
-      Keyboard.press(KEY_LEFT_CTRL);
-      Keyboard.press(KEY_LEFT_ALT);
-      Keyboard.press(KEY_U);
+      BootKeyboard.press(KEY_LEFT_CTRL);
+      BootKeyboard.press(KEY_LEFT_ALT);
+      BootKeyboard.press(KEY_U);
       delay(17);
-      Keyboard.releaseAll();
+      BootKeyboard.releaseAll();
     }
+    else if (mode == 3) BootKeyboard.write(KEY_F2);
     else if (mode == -1) resetStdev(stdev);
 
     log(47); // log o
@@ -41,21 +42,21 @@ void readButtons(timingsS &timings, int &mode) { // button reading
   if (digitalRead(button2) == LOW && millis() - timings.debounce[2] > buttonDebounce) {
     timings.debounce[2] = millis();    // ratelimit/debounce for mode change
 
-    if      (mode == 0) Keyboard.write(KEY_F21);
+    if      (mode == 0) BootKeyboard.write(KEY_F21);
     else if (mode == 1) {
-      Keyboard.write(KEY_UP);
+      BootKeyboard.write(KEY_UP);
       delay(17);
-      Keyboard.press(KEY_LEFT_CTRL);
-      Keyboard.press(KEY_0);
+      BootKeyboard.press(KEY_LEFT_CTRL);
+      BootKeyboard.press(KEY_0);
       delay(17);
-      Keyboard.releaseAll();
+      BootKeyboard.releaseAll();
     }
     else if (mode == 2) {
-      Keyboard.press(KEY_LEFT_CTRL);
-      Keyboard.press(KEY_H);
+      BootKeyboard.press(KEY_LEFT_CTRL);
+      BootKeyboard.press(KEY_H);
       delay(17);
-      Keyboard.releaseAll();
-    } 
+      BootKeyboard.releaseAll();
+    } else if (mode == 3) BootKeyboard.write(KEY_F1);
     else if (mode == -1) {
       hideLed = !hideLed;
       hideDisp = !hideDisp;
@@ -85,16 +86,18 @@ void readSlide(slideS &slide, int mode) { // slider reading
           Consumer.write(MEDIA_VOL_UP);
           slide.fancyPosition += 2;      // change percentage for volume
         }
-        else if (mode == 1) Keyboard.write(KEY_EQUAL);
-        else if (mode == 2) Keyboard.write(KEY_UP);
+        else if (mode == 1) BootKeyboard.write(KEY_EQUAL);
+        else if (mode == 2) BootKeyboard.write(KEY_UP);
+        else if (mode == 3) BootKeyboard.write(KEY_UP);
         if (doDebug) log(43); // log '+'
       } else {
         if (mode == 0) {
           Consumer.write(MEDIA_VOL_DOWN);
           slide.fancyPosition -= 2; // change percentage
         }
-        else if (mode == 1) Keyboard.write(KEY_MINUS);
-        else if (mode == 2) Keyboard.write(KEY_DOWN);
+        else if (mode == 1) BootKeyboard.write(KEY_MINUS);
+        else if (mode == 2) BootKeyboard.write(KEY_DOWN);
+        else if (mode == 3) BootKeyboard.write(KEY_DOWN);
 
         if (doDebug) log(45); // log '-'
       }
@@ -116,14 +119,14 @@ void readRotate() { // encoder reading, interrupt-called function
     if (digitalRead(dirPin) == digitalRead(rotPin)) { // rotation to the right
       if (lastDir || !lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation++;
-        if      (mode == 0) Keyboard.write(KEY_F23);
-        else if (mode == 1) Keyboard.write(KEY_RIGHT);
+        if      (mode == 0) BootKeyboard.write(KEY_F23);
+        else if (mode == 1) BootKeyboard.write(KEY_RIGHT);
         else if (mode == 2) {
-          Keyboard.press(KEY_LEFT_CTRL);
-          Keyboard.press(KEY_Y);
+          BootKeyboard.press(KEY_LEFT_CTRL);
+          BootKeyboard.press(KEY_Y);
           delay(17);
-          Keyboard.releaseAll();
-        }
+          BootKeyboard.releaseAll();
+        } else if (mode == 3) BootKeyboard.write(KEY_RIGHT);
         lastDir = true;
         if (doDebug) log(44); // log '>'
       }
@@ -131,14 +134,14 @@ void readRotate() { // encoder reading, interrupt-called function
     else { // rotation to the left
       if (!lastDir || lastDir && t - timings.debounce[3] > changeDebounce) { // if direction change, more delay is needed
         rotation--;
-        if      (mode == 0) Keyboard.write(KEY_F22);
-        else if (mode == 1) Keyboard.write(KEY_LEFT);
+        if      (mode == 0) BootKeyboard.write(KEY_F22);
+        else if (mode == 1) BootKeyboard.write(KEY_LEFT);
         else if (mode == 2) {
-          Keyboard.press(KEY_LEFT_CTRL);
-          Keyboard.press(KEY_Z);
+          BootKeyboard.press(KEY_LEFT_CTRL);
+          BootKeyboard.press(KEY_Z);
           delay(17);
-          Keyboard.releaseAll();
-        }
+          BootKeyboard.releaseAll();
+        } else if (mode == 3) BootKeyboard.write(KEY_LEFT);
         if (doDebug) log(46); // log '<'
         lastDir = false;
       }
@@ -152,7 +155,7 @@ void readRotate() { // encoder reading, interrupt-called function
 }
 
 // things related to debug mode
-void showDebug() { // if doDebug is one, mode -1 can be selected, which will run this each loop
+void showDebug() { // if doDebug is true, mode -1 can be selected, which will run this each loop
   timings.debug = millis();
 
   if (!hideLed) leds[0] = CHSV(timings.debug / 10 , rotation, (slide.position[0] * 7 / 32) + 32);
@@ -274,6 +277,7 @@ void dispMode(int mode) {
   if      (mode == 0) oled.print("Volume:");
   else if (mode == 1) oled.print("Zoom");
   else if (mode == 2) oled.print("Up / Down");
+  else if (mode == 3) oled.print("Up / Down");
 
   // encoder
   oled.setCursor(10, 2);
@@ -281,6 +285,8 @@ void dispMode(int mode) {
   if      (mode == 0) oled.print("Media Volume");
   else if (mode == 1) oled.print("Rotation");
   else if (mode == 2) oled.print("Undo / Redo");
+  else if (mode == 3) oled.print("Left / Right");
+
 
   // button 2
   oled.setCursor(10,3);
@@ -288,12 +294,16 @@ void dispMode(int mode) {
   if      (mode == 0) oled.print("Input");
   else if (mode == 1) oled.print("Reset");
   else if (mode == 2) oled.print("Replace");
+  else if (mode == 3) oled.print("f1");
+
 
   // button 1
   oled.setCursor(74,3);
   if      (mode == 0) oled.print("Output");
   else if (mode == 1) oled.print("Flip");
   else if (mode == 2) oled.print("Upload");
+  else if (mode == 3) oled.print("f2");
+
 
   oled.setFont(circle);
   oled.setCursor(0,3);
@@ -327,7 +337,7 @@ void dispEncod(int value) {
   oled.print(value % 8 >= 0 ? value % 8 : value % 8 + 8);
 }
 void dispInd(int mode) {
-  if (mode == -1 && !hideLed) {
+  if (mode == -1 || !hideLed) {
     RXLED0;
     TXLED0;
   } else {

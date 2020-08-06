@@ -89,7 +89,7 @@ CRGB leds[1];
 void setup() {
   // Serial.begin(9600);              // init serial at 9600bps, no longer used as tx pin in use
 
-  Keyboard.begin();                   // init keyboard
+  BootKeyboard.begin();                   // init keyboard
 
   oled.begin(&Adafruit128x32, addr);  // init display
   oled.displayRemap ( true   );       // flip display 180deg
@@ -129,9 +129,11 @@ void loop() {
   if (timings.start - timings.lastChange > 360000 && doTimeout) { // timeout because light is annoying
     hideDisp = true;
     hideLed  = true;
+    mode     = 0;
 
     if (!hidden) oled.clear();
-    if (!hidden) leds[0] = CRGB::Black;
+    if (!hidden) leds[0] = CHSV(0, 0, 0);
+    if (!hidden) FastLED.show();
     hidden = true;
   } else {
     hideDisp = false;
