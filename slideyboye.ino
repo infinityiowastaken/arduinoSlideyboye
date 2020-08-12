@@ -19,7 +19,7 @@
 #define ledPin2 19 // expansion strip, on A1 which maps to pin 19
 
 #define divisor 20 // gives 51.2 steps across 0-1023 range
-#define doDebug  1 // shows timings (and last instructions) as a mode
+#define doDebug  0 // shows timings (and last instructions) as a mode
 #define invert   0
 
 #define numLeds 30
@@ -79,7 +79,8 @@ stdevS stdev;
     15 least recent value 
 */
 
-int delta, rotation, fillBut, fillBut2, mode;
+int delta, rotation, fillBut, fillBut2, mode = 3;
+int initPress = false;
 
 bool updateRot, lastDir, hideLed, hideDisp, doTimeout = true, hidden;
 
@@ -109,7 +110,9 @@ void setup() {
   slide.reading[0] = analogRead(slider);      // init slider readings
   slide.fancyPosition = 2 * round((float) slide.reading[0] * 0.09765625 * 0.5);
 
-  fullRefresh(0, slide.reading[0], slide.fancyPosition, 0); // default values for display
+  fullRefresh(mode, slide.reading[0], slide.fancyPosition, 0); // default values for display
+  
+  leds[0] = CHSV(60, 255, 64);
 }
 
 void loop() {

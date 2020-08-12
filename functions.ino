@@ -265,7 +265,17 @@ void dispMode(int mode) {
     return;
   }
 
-  if (!hideLed) leds[0] = CHSV(90*mode+10, 255, 64);
+  if (!hideLed) {
+    if (mode == 3) {
+      if (BootKeyboard.getProtocol() == HID_BOOT_PROTOCOL) {
+        leds[0] = CHSV(85, 255, 64);
+      } else {
+        leds[0] = CHSV(170, 255, 64);
+      }
+    } else {
+      leds[0] = CHSV(90*mode+10, 255, 64);
+    }
+  }
   else          leds[0] = CHSV(0, 0, 0);
   FastLED.show();
 
